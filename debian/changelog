@@ -1,3 +1,9 @@
+webdiff (20040801) unstable; urgency=low
+
+  * added -r/--reset option to reset differences
+
+ -- Stephan Beyer <s-beyer@gmx.net>  Sun,  1 Aug 2004 16:41:32 +0200
+
 webdiff (20040727) unstable; urgency=low
 
   * added optional GNU readline support for interactive configuration

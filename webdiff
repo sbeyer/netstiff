@@ -20,7 +20,7 @@
 # You may also tell me your thoughts/ideas/opinion about this tool.
 
 ProgName = 'webdiff'
-ProgVersion = '20040727'
+ProgVersion = '20040801'
 WorkDir = ENV['HOME']+'/.'+ProgName+'/'
 DefaultTimeout = 20
 DefaultTest = 'diff'
@@ -37,6 +37,7 @@ Option can be one of:
 	--configure, -c		Reconfigure #{ProgName}
 	--diff, -d		Print the current differences
 	--help, -h		Print this help
+	--reset, -r		Reset current differences
 	--version, -v		Print current version
 
 Further options are ignored.
@@ -212,7 +213,7 @@ on the command line.
 
 	def choose(possible)
 		puts
-		choice = readln("\tYour choice [#{possible.join('/')}]: ") while possible.index(choice).nil?
+		choice = readln("\tYour choice [#{possible.join('/')}]: ") until possible.member?(choice)
 		puts "\n"
 		choice
 	end
@@ -284,8 +285,8 @@ Type a range. Examples:
 		EOH
 		begin
 			@conf[nr]['range'] = readln('> ')
-		end while (@conf[nr]['range'] =~ /^\d*-\d*$/).nil? and
-		       not @conf[nr]['range'].empty?
+		end until (@conf[nr]['range'] =~ /^\d*-\d*$/) or
+		           @conf[nr]['range'].empty?
 	end
 	def configure_timeout(nr)
 		puts "\nConnection timeout in seconds:"
@@ -295,8 +296,8 @@ Type a range. Examples:
 		puts "\nWhat is host and port of your HTTP proxy? Format: host:port"
 		begin
 		@conf[nr]['proxy'] = readln('http://')
-		end while (@conf[nr]['proxy'] =~ /^[\w\.-]+:\d+$/).nil? and
-		       not @conf[nr]['proxy'].empty?
+		end until (@conf[nr]['proxy'] =~ /^[\w\.-]+:\d+$/) or
+		           @conf[nr]['proxy'].empty?
 	end
 	def configure_urlmenu(nr)
 		loop do
@@ -387,18 +388,17 @@ class MainDiff < Main
 		super
 		@config.each do |e|
 			method = getconf(e, 'test')
-			if 'diff' == method
-				key = name(method, e['url'], getconf(e, 'range'))
-				list = @store[key]
-				next if list.nil?
-				next if list[0] == list[1]
-				puts '--- '+e['url']
-				puts '+++ '+e['url']
-				file1, file2 = [], []
-				list[0].each_line do |line| file1 << line end
-				list[1].each_line do |line| file2 << line end
-				printdiff(file1.diff(file2))
-			end
+			next if 'diff' != method
+			key = name(method, e['url'], getconf(e, 'range'))
+			list = @store[key]
+			next if list.nil?
+			next if list[0] == list[1]
+			puts '--- '+e['url']
+			puts '+++ '+e['url']
+			file1, file2 = [], []
+			list[0].each_line do |line| file1 << line end
+			list[1].each_line do |line| file2 << line end
+			printdiff(file1.diff(file2))
 		end
 	end
 
@@ -420,6 +420,22 @@ class MainDiff < Main
 			d[2].each do |line|
 				print d[0].to_s+line
 			end
+		end
+	end
+end
+
+class MainReset < Main
+	def initialize
+		super
+		@config.each do |e|
+			method = getconf(e, 'test')
+			next if method != 'diff'
+			key = name(method, e['url'], getconf(e, 'range'))
+			list = @store[key]
+			next if list.nil?
+			next if list[0] == list[1]
+			list[0] = list[1]
+			@store[key] = list
 		end
 	end
 end
@@ -489,7 +505,7 @@ class MainGet < Main
 				conn.open_timeout = timeout.to_i
 				conn.start do
 					resp = {}
-					unless ['size','md5sum','date'].index(method).nil?
+					if ['size','md5sum','date'].member?(method)
 						resp = conn.head(path, header) # only need header (HEAD request)
 						case method
 							when 'size'
@@ -536,6 +552,8 @@ case ARGV[0]
 	when '--help', '-h'
 		showversion
 		showusage
+	when '--reset', '-r'
+		MainReset.new
 	when '--version', '-v'
 		showversion
 	else
