@@ -8,6 +8,7 @@ Standards-Version: 3.6.1
 Package: webdiff
 Architecture: all
 Depends: ruby (>= 1.8), libalgorithm-diff-ruby (>= 0.4)
+Suggests: libreadline-ruby (>= 1.8)
 Description: powerful and easy tool to check for web page updates
  webdiff is a powerful web page update checker. You can choose between
  different methods (diff, size, date, md5sum, regexp) webdiff should

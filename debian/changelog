@@ -1,3 +1,9 @@
+webdiff (20040727) unstable; urgency=low
+
+  * added optional GNU readline support for interactive configuration
+
+ -- Stephan Beyer <s-beyer@gmx.net>  Tue, 27 Jul 2004 16:38:04 +0200
+
 webdiff (20040721) unstable; urgency=low
 
   * Added 'range' option to be able to get and diff ranges of web pages only

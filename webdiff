@@ -6,6 +6,8 @@
 #	  http://www.ruby-lang.org (at least version 1.8)
 #	* libalgorithm-diff for ruby
 #	  http://www.rubynet.org/mirrors/diff/
+# recommended:
+#	* GNU readline for ruby (for interactive configuration)
 # wishlist/todo?
 #	* correct diff unified format ranges output(!)
 #	  (it's not implemented because I'm a bit confused and lazy)
@@ -18,7 +20,7 @@
 # You may also tell me your thoughts/ideas/opinion about this tool.
 
 ProgName = 'webdiff'
-ProgVersion = '20040721'
+ProgVersion = '20040727'
 WorkDir = ENV['HOME']+'/.'+ProgName+'/'
 DefaultTimeout = 20
 DefaultTest = 'diff'
@@ -52,8 +54,19 @@ def name(test, url, suffix=nil)
 	end
 end
 
-def readln
-	STDIN.gets.chomp
+$gnu =	begin
+	require 'readline'
+	true
+rescue LoadError
+	false
+end
+def readln(str = '')
+	if $gnu
+		Readline.readline(str, true)
+	else
+		print str
+		STDIN.gets.chomp
+	end
 end
 
 class Store
@@ -199,21 +212,17 @@ on the command line.
 
 	def choose(possible)
 		puts
-		begin
-			print "\tYour choice [#{possible.join('/')}]: "
-			choice = readln
-		end while possible.index(choice).nil?
+		choice = readln("\tYour choice [#{possible.join('/')}]: ") while possible.index(choice).nil?
 		puts "\n"
 		choice
 	end
 
 	def configure_url(nr)
 		puts "\nPlease type the correct URL of the web page you want to check for updates:"
-		print 'http://'
 		if @conf[nr].nil?
-			@conf[nr] = {'url'=>'http://'+readln}
+			@conf[nr] = {'url'=>'http://'+readln('http://')}
 		else
-			@conf[nr]['url'] = 'http://'+readln
+			@conf[nr]['url'] = 'http://'+readln('http://')
 		end
 	end
 	def configure_testmethod(nr)
@@ -274,10 +283,9 @@ Type a range. Examples:
 	65-923	= get bytes 65 to 923
 		EOH
 		begin
-			print '> '
-			@conf[nr]['range'] = readln
+			@conf[nr]['range'] = readln('> ')
 		end while (@conf[nr]['range'] =~ /^\d*-\d*$/).nil? and
-		          not @conf[nr]['range'].empty?
+		       not @conf[nr]['range'].empty?
 	end
 	def configure_timeout(nr)
 		puts "\nConnection timeout in seconds:"
@@ -286,10 +294,9 @@ Type a range. Examples:
 	def configure_proxy(nr)
 		puts "\nWhat is host and port of your HTTP proxy? Format: host:port"
 		begin
-			print 'http://'
-			@conf[nr]['proxy'] = readln
+		@conf[nr]['proxy'] = readln('http://')
 		end while (@conf[nr]['proxy'] =~ /^[\w\.-]+:\d+$/).nil? and
-		          not @conf[nr]['proxy'].empty?
+		       not @conf[nr]['proxy'].empty?
 	end
 	def configure_urlmenu(nr)
 		loop do
