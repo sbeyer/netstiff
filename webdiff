@@ -9,17 +9,16 @@
 # wishlist/todo?
 #	* correct diff unified format ranges output(!)
 #	  (it's not implemented because I'm a bit confused and lazy)
-#	* new option: ranges (only get small parts of files and diff them)
 #	* https, ftp
 #	* use rdtool to create manpage?
 #	* nicer code ;)
-#	* fix bugs
+#	* fix bugs (2 've been fixed since first release)
 # Please tell me if you find any bugs: Stephan Beyer <s-beyer@gmx.net>
 # or IRC (FreeNode, OFTC, IRCnet): sbeyer
 # You may also tell me your thoughts/ideas/opinion about this tool.
 
 ProgName = 'webdiff'
-ProgVersion = '20040720'
+ProgVersion = '20040721'
 WorkDir = ENV['HOME']+'/.'+ProgName+'/'
 DefaultTimeout = 20
 DefaultTest = 'diff'
@@ -45,8 +44,12 @@ Have fun!
 	EOU
 end
 
-def name(test, url)
-	test+'::'+url
+def name(test, url, suffix=nil)
+	if suffix.nil?
+		test+'::'+url
+	else
+		test+'::'+url+'::'+suffix
+	end
 end
 
 def readln
@@ -142,11 +145,11 @@ on the command line.
 # + ...
 # <url2>
 # ...
-# variables are: client, lang, proxy, referer, test, timeout
+# variables are: client, lang, proxy, referer, test, timeout, range
 # <test> can be diff, size, date, md5sum or a <regexp>
 # diff is the default. proxy must be in the format <host>:<port>
 # All variable settings are optional.
-# Have fun! sbeyer, 20040718
+# Have fun! sbeyer
 				EOH
 				@conf.each do |e|
 					out.puts "\n"+e['url'] unless e['url'].nil?
@@ -155,6 +158,7 @@ on the command line.
 					out.puts "  + client\t"+e['client'] unless e['client'].nil?
 					out.puts "  + referer\t"+e['referer'] unless e['referer'].nil?
 					out.puts "  + lang\t"+e['lang'] unless e['lang'].nil?
+					out.puts "  + range\t"+e['range'] unless e['range'].nil?
 					out.puts "  + timeout\t"+e['timeout'] unless e['timeout'].nil?
 					out.puts "  + proxy\t"+e['proxy'] unless e['proxy'].nil?
 				end
@@ -256,13 +260,36 @@ Choose the TEST METHOD, the way of looking for changes. Type:
 		puts "\nType your language code, e.g de, ca or en:"
 		@conf[nr]['lang'] = readln
 	end
+	def configure_range(nr)
+		# This option only makes sense when using the DIFF method
+		puts
+		puts 'Note: You should NOT use this option globally.' if nr==0
+		puts 'Not all HTTP servers support this feature.'
+		puts <<-EOH
+Type a range. Examples:
+	 0-99	= get the first 100 bytes (byte 0 to byte 99)
+	  -99	= get the last 99 bytes
+	99-99	= get the 99th byte
+	99-	= get all bytes, beginning with the 99th
+	65-923	= get bytes 65 to 923
+		EOH
+		begin
+			print '> '
+			@conf[nr]['range'] = readln
+		end while (@conf[nr]['range'] =~ /^\d*-\d*$/).nil? and
+		          not @conf[nr]['range'].empty?
+	end
 	def configure_timeout(nr)
 		puts "\nConnection timeout in seconds:"
 		@conf[nr]['timeout'] = readln
 	end
 	def configure_proxy(nr)
 		puts "\nWhat is host and port of your HTTP proxy? Format: host:port"
-		@conf[nr]['proxy'] = readln
+		begin
+			print 'http://'
+			@conf[nr]['proxy'] = readln
+		end while (@conf[nr]['proxy'] =~ /^[\w\.-]+:\d+$/).nil? and
+		          not @conf[nr]['proxy'].empty?
 	end
 	def configure_urlmenu(nr)
 		loop do
@@ -279,10 +306,11 @@ Choose the TEST METHOD, the way of looking for changes. Type:
 			puts "\t[a]\tUser-Agent: #{@conf[nr]['client']}"
 			puts "\t[r]\tReferer: #{@conf[nr]['referer']}"
 			puts "\t[l]\tAccept-Language: #{@conf[nr]['lang']}"
+			puts "\t[b]\tRange: #{@conf[nr]['range']}"
 			puts "\t[t]\tTimeout: #{@conf[nr]['timeout']}"
 			puts "\t[p]\tProxy: #{@conf[nr]['proxy']}"
 			puts
-			possible += ['m', 'a', 'r', 'l', 't', 'p']
+			possible += ['m', 'a', 'r', 'l', 'b', 't', 'p']
 			if nr > 0
 				puts "\t[d]\tDelete URL from list."
 				possible << 'd'
@@ -295,6 +323,7 @@ Choose the TEST METHOD, the way of looking for changes. Type:
 				when 'a' then configure_useragent(nr)
 				when 'r' then configure_referer(nr)
 				when 'l' then configure_lang(nr)
+				when 'b' then configure_range(nr)
 				when 't' then configure_timeout(nr)
 				when 'p' then configure_proxy(nr)
 				when 'd'
@@ -331,10 +360,10 @@ class Main
 	end
 
 	def cleanup
-		verify = false
 		@store.each do |key|
+			verify = false
 			@config.each do |e|
-				verify = true if key == name(getconf(e, 'test'), e['url'])
+				verify = true if key == name(getconf(e, 'test'), e['url'], getconf(e,'range'))
 			end
 			unless verify
 				@store.delete(key)
@@ -352,7 +381,7 @@ class MainDiff < Main
 		@config.each do |e|
 			method = getconf(e, 'test')
 			if 'diff' == method
-				key = name(method, e['url'])
+				key = name(method, e['url'], getconf(e, 'range'))
 				list = @store[key]
 				next if list.nil?
 				next if list[0] == list[1]
@@ -437,7 +466,9 @@ class MainGet < Main
 			header['User-Agent'] = getconf(e, 'client') unless getconf(e, 'client').nil?
 			header['Referer'] = getconf(e, 'referer') unless getconf(e, 'referer').nil?
 			header['Accept-Language'] = getconf(e, 'lang') unless getconf(e, 'lang').nil?
+			header['Range'] = 'bytes='+getconf(e, 'range') unless getconf(e, 'range').nil?
 			header['Authorization'] ='Basic '+[url.userinfo].pack('m') unless url.userinfo.to_s.empty?
+			header['Connection'] = 'close' # default
 			proxy, proxyport = getconf(e, 'proxy').split(/:/) unless getconf(e, 'proxy').nil?
 			proxyport = proxyport.to_i unless proxyport.nil?
 			timeout = getconf(e, 'timeout')
@@ -455,16 +486,16 @@ class MainGet < Main
 						resp = conn.head(path, header) # only need header (HEAD request)
 						case method
 							when 'size'
-								updatedata(name(method,url.to_s), resp['Content-Length'], &todo)
+								updatedata(name(method,e['url']), resp['Content-Length'], &todo)
 							when 'md5sum'
-								updatedata(name(method,url.to_s), resp['Content-MD5'], &todo)
+								updatedata(name(method,e['url']), resp['Content-MD5'], &todo)
 							when 'date'
-								updatedata(name(method,url.to_s), resp['Last-Modified'], &todo)
+								updatedata(name(method,e['url']), resp['Last-Modified'], &todo)
 						end
 					else
 						resp = conn.get(path, header) # get body (GET request)
 						if method == 'diff'
-							diffdata(name(method,url.to_s), resp.body, &todo)
+							diffdata(name(method, e['url'], getconf(e, 'range')), resp.body, &todo)
 						else
 							begin
 								if resp.body =~ eval('%r'+method)
@@ -477,7 +508,7 @@ class MainGet < Main
 					end
 				end
 			rescue SocketError
-				$log.puts url.to_s+': '+$!
+				$log.puts e['url']+': '+$!
 			end
 		end
 	end

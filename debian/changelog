@@ -1,3 +1,13 @@
+webdiff (20040721) unstable; urgency=low
+
+  * Added 'range' option to be able to get and diff ranges of web pages only
+  * Minor changes to Config::configure_* code
+  * Fixed two nested bugs:
+    1. Main::cleanup didn't work the way it was supposed to
+    2. reset of URLs with given port
+
+ -- Stephan Beyer <s-beyer@gmx.net>  Wed, 21 Jul 2004 02:36:33 +0200
+
 webdiff (20040720) unstable; urgency=low
 
   * Initial Release.
