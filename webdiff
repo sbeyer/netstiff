@@ -1,32 +1,29 @@
 #!/usr/bin/ruby
-# (C) 2004, Stephan Beyer, GPL
+# (C) 2004,2007, Stephan Beyer, GPL
 #
 # requirements:
 #	* ruby standard distribution (net::http, uri, pstore, getoptlong)
 #	  http://www.ruby-lang.org (at least version 1.8)
 #	* libalgorithm-diff for ruby
-#	  http://www.rubynet.org/mirrors/diff/
+#	  http://users.cybercity.dk/~dsl8950/ruby/diff.html
 # recommended:
 #	* GNU readline for ruby (for interactive configuration)
 # wishlist/todo?
 #	* correct diff unified format ranges output(!)
-#	  (it's not implemented because I'm a bit confused and lazy)
 #	* https, ftp
-#	* use rdtool to create manpage?
+#	* use rdtool to create manpage? No.
 #	* nicer code ;)
-#	* fix bugs (2 've been fixed since first release)
 # Please tell me if you find any bugs: Stephan Beyer <s-beyer@gmx.net>
-# or IRC (FreeNode, OFTC, IRCnet): sbeyer
 # You may also tell me your thoughts/ideas/opinion about this tool.
 
 ProgName = 'webdiff'
-ProgVersion = '20040801'
+ProgVersion = '20070227'
 WorkDir = ENV['HOME']+'/.'+ProgName+'/'
 DefaultTimeout = 20
 DefaultTest = 'diff'
 
 def showversion
-	puts "#{ProgName} #{ProgVersion}\t\t(C) Stephan Beyer <s-beyer@gmx.net>, 2004, GPL"
+	puts "#{ProgName} #{ProgVersion}\t\t(C) Stephan Beyer, 2004,2007, GNU GPL"
 end
 def showusage
 	puts <<-EOU
@@ -160,7 +157,7 @@ on the command line.
 # <url2>
 # ...
 # variables are: client, lang, proxy, referer, test, timeout, range
-# <test> can be diff, size, date, md5sum or a <regexp>
+# <test> can be html, diff, size, date, md5sum or a <regexp>
 # diff is the default. proxy must be in the format <host>:<port>
 # All variable settings are optional.
 # Have fun! sbeyer
@@ -194,7 +191,7 @@ on the command line.
 			end
 			puts "\t[n]\tAdd new URL"
 			puts
-			puts "\t[f]\tFinished"
+			puts "\t[f]\tFinished (exit & save)"
 			puts "\t[x]\tExit without saving"
 			case (c = choose(possible))
 				when 'f'
@@ -232,7 +229,9 @@ on the command line.
 Choose the TEST METHOD, the way of looking for changes. Type:
 	diff	This method downloads the whole file and saves the two 
 		last versions. Use the -d option to take a look at a diff 
-		of these versions. (Default)
+		of these versions.
+	html	This method acts like 'diff', but ignores text between
+		'<' and '>' on diffing. (Those usually denote HTML tags.)
 	size	This method downloads the HTTP header to check if the file
 		size changes. The server should response the Content-Length
 		header entity. (works in most cases)
@@ -242,11 +241,11 @@ Choose the TEST METHOD, the way of looking for changes. Type:
 		the Last-Modified header entity. (works in most cases)
 	md5sum	This method downloads the HTTP header to check if the MD5 sum
 		changes. The server should response the Content-MD5 header
-		entity, which is very seldom.
+		entity to make this method work.
 	regexp	This method downloads the whole file and checks if a given
 		regexp matches. Nothing is stored locally.
 		EOD
-		@conf[nr]['test'] = choose(['diff','size','date','md5sum','regexp'])
+		@conf[nr]['test'] = choose(['diff','html','size','date','md5sum','regexp'])
 		if @conf[nr]['test'] == 'regexp'
 			puts "\n"+'Please type the regexp, e.g. /[Hh]ugo\s+wrote/ ...'
 			begin
@@ -388,7 +387,7 @@ class MainDiff < Main
 		super
 		@config.each do |e|
 			method = getconf(e, 'test')
-			next if 'diff' != method
+			next unless ['diff','html'].member?(method)
 			key = name(method, e['url'], getconf(e, 'range'))
 			list = @store[key]
 			next if list.nil?
@@ -429,7 +428,7 @@ class MainReset < Main
 		super
 		@config.each do |e|
 			method = getconf(e, 'test')
-			next if method != 'diff'
+			next unless ['diff','html'].member?(method)
 			key = name(method, e['url'], getconf(e, 'range'))
 			list = @store[key]
 			next if list.nil?
@@ -481,6 +480,12 @@ class MainGet < Main
 		end
 	end
 
+	# simple regular <.*> matcher and remover.
+	# Could fail on nested <tags>, on wrong HTML and on Javascript.
+	def tagstrip(str)
+		str.gsub(/([\r\n]|<[^<>]*>)+/,"\n").gsub(/[ \t]+/,' ').gsub(/([\r\n][ \t]+)+[\r\n]?/, "\n")
+	end
+
 	def fetchurls
 		@config.each do |e|
 			url = URI.parse(e['url'])
@@ -519,6 +524,8 @@ class MainGet < Main
 						resp = conn.get(path, header) # get body (GET request)
 						if method == 'diff'
 							diffdata(name(method, e['url'], getconf(e, 'range')), resp.body, &todo)
+						elsif method == 'html'
+							diffdata(name(method, e['url'], getconf(e, 'range')), tagstrip(resp.body), &todo)
 						else
 							begin
 								if resp.body =~ eval('%r'+method)
