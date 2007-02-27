@@ -6,6 +6,9 @@ clean:
 	dh_testroot
 	dh_clean 
 
+build:
+	# do nothing
+
 install: build
 	dh_testdir
 	dh_testroot
@@ -20,9 +23,8 @@ binary-indep: build install
 binary-arch: build install
 	dh_testdir
 	dh_testroot
-	dh_installchangelogs 
+	dh_installchangelogs ChangeLog
 	dh_installdocs
-#	dh_installcron
 	dh_installman webdiff.1
 	dh_link
 	dh_strip
@@ -35,4 +37,4 @@ binary-arch: build install
 	dh_builddeb
 
 binary: binary-indep binary-arch
-.PHONY: build clean binary-indep binary-arch binary install configure
+.PHONY: build clean binary-indep binary-arch binary install
