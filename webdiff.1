@@ -64,12 +64,14 @@ again.
 This option will display version number and copyright.
 
 .SH "RESTRICTIONS"
+.LP
 There is no special case to handle status codes other than 200. In 
 practice, webdiff will neither follow redirections nor will it notice
 any 4xx or 5xx error code. The resulting error pages are treated like
 usual web pages. No logged message. Please check on your own.
 
 .SH "USAGE EXAMPLE"
+.LP
 You want to add a new URI webdiff should check for updates.
 .nf
 \&        \fCwebdiff \-c\fR
@@ -102,8 +104,16 @@ do
 and webdiff forgets about the changes.
 
 .SH "BUGS"
+.LP
 The \fB\-\-diff\fR output format is not equal to the unified format of
 \fIdiff(1)\fP, but it is related.
 
+The regular expression stuff is using the \fIeval\fP function of
+Ruby. This means that you are able to do non\-regex\-related stuff
+using special strings as `regular expressions'. This is a big 
+security issue when using webdiff as a backend for e.g. web
+applications.
+
 .SH "AUTHOR AND COPYRIGHT"
+.LP
 \(co Stephan Beyer \fC<s\-beyer@gmx.net>\fR, 2004, 2007, GNU GPL

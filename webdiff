@@ -17,7 +17,7 @@
 # You may also tell me your thoughts/ideas/opinion about this tool.
 
 ProgName = 'webdiff'
-ProgVersion = '20070227'
+ProgVersion = '20070301'
 WorkDir = ENV['HOME']+'/.'+ProgName+'/'
 DefaultTimeout = 20
 DefaultTest = 'diff'
@@ -65,6 +65,19 @@ def readln(str = '')
 		print str
 		STDIN.gets.chomp
 	end
+end
+
+def str_to_re(str)
+	eval('%r'+str) ## FIXME this is eval^Wevil!
+# How can this be fixed?
+# See this #ruby-lang log:
+# <apeiros> try yaml.
+# <apeiros> {:regex1 => /foo/i, :regex2 => /bar/u}.to_yaml # => "--- 
+#           \n:regex2: !ruby/regexp /bar/u\n:regex1: !ruby/regexp /foo/i\n"
+# <apeiros> regexen are slightly uncomfortable, but most stuff is human readable 1:1
+# <sbeyer> apeiros, ok, thank you, it's noticed. And is there a way if I don't want 
+#          to change the format? ;-)
+# <apeiros> the obvious: eval or split the expression and use Regexp.new
 end
 
 class Store
@@ -156,22 +169,34 @@ on the command line.
 # + ...
 # <url2>
 # ...
+#
 # variables are: client, lang, proxy, referer, test, timeout, range
 # <test> can be html, diff, size, date, md5sum or a <regexp>
 # diff is the default. proxy must be in the format <host>:<port>
+# 
+# 'diff'/'html' test modes have two extra variables:
+# start <start regexp>		and		end <end regexp>	
+# These two are nice for dynamic web pages with a more interesting static 
+# part. Set start and end regexp, and then webdiff only diffs the content
+# between the first 'start' and the last 'end' match, and not a change 
+# like "xx users online" or a random (fortune) server signature.
+#
 # All variable settings are optional.
 # Have fun! sbeyer
 				EOH
 				@conf.each do |e|
 					out.puts "\n"+e['url'] unless e['url'].nil?
-					out.puts "  + test\t"+e['test'] unless 
-					           e['test'].nil? or e['test']==DefaultTest
+					out.puts "  + test\t"+e['test'] unless e['test'].nil?
 					out.puts "  + client\t"+e['client'] unless e['client'].nil?
 					out.puts "  + referer\t"+e['referer'] unless e['referer'].nil?
 					out.puts "  + lang\t"+e['lang'] unless e['lang'].nil?
 					out.puts "  + range\t"+e['range'] unless e['range'].nil?
 					out.puts "  + timeout\t"+e['timeout'] unless e['timeout'].nil?
 					out.puts "  + proxy\t"+e['proxy'] unless e['proxy'].nil?
+					if ['html','diff'].member?(e['test'])
+						out.puts "  + start\t"+e['start'] unless e['start'].nil?
+						out.puts "  + end \t"+e['end'] unless e['end'].nil?
+					end
 				end
 			end
 		end
@@ -181,7 +206,7 @@ on the command line.
 			puts "\n\n"
 			possible = ['n', 'f', 'x']
 			@conf.each_with_index do |e, c|
-				print "\t[#{c}]\t"
+				print "  [#{c}]\t"
 				possible << c.to_s
 				if c == 0
 					puts 'Global settings'
@@ -189,10 +214,10 @@ on the command line.
 					puts e['url']+' specific settings'
 				end
 			end
-			puts "\t[n]\tAdd new URL"
+			puts "  [n]\tAdd new URL"
 			puts
-			puts "\t[f]\tFinished (exit & save)"
-			puts "\t[x]\tExit without saving"
+			puts "  [f]\tFinished (exit & save)"
+			puts "  [x]\tExit without saving"
 			case (c = choose(possible))
 				when 'f'
 					return true
@@ -210,9 +235,21 @@ on the command line.
 
 	def choose(possible)
 		puts
-		choice = readln("\tYour choice [#{possible.join('/')}]: ") until possible.member?(choice)
+		choice = readln("  Your choice [#{possible.join('/')}]: ") until possible.member?(choice)
 		puts "\n"
 		choice
+	end
+
+	def ask_regexp
+		puts "\n"+'Please type the regexp, e.g. /[Hh]ugo\s+wrote/ ...'
+		begin
+			re = readln
+			str_to_re(re)
+		rescue SyntaxError
+			puts 'Incorrect regular expression! Try again:'
+			retry
+		end
+		re
 	end
 
 	def configure_url(nr)
@@ -246,16 +283,7 @@ Choose the TEST METHOD, the way of looking for changes. Type:
 		regexp matches. Nothing is stored locally.
 		EOD
 		@conf[nr]['test'] = choose(['diff','html','size','date','md5sum','regexp'])
-		if @conf[nr]['test'] == 'regexp'
-			puts "\n"+'Please type the regexp, e.g. /[Hh]ugo\s+wrote/ ...'
-			begin
-				@conf[nr]['test'] = readln
-				eval('%r'+@conf[nr]['test'])
-			rescue SyntaxError
-				puts 'Incorrect regular expression! Try again:'
-				retry
-			end
-		end
+		@conf[nr]['test'] = ask_regexp if @conf[nr]['test'] == 'regexp'
 	end
 	def configure_useragent(nr)
 		puts "\nType an User-Agent identification string:"
@@ -303,26 +331,32 @@ Type a range. Examples:
 			puts "\n\n"
 			if nr == 0 then
 				possible=[]
-				puts "\t[ ]\tGlobal"
+				puts "  [ ]\tGlobal"
 			else
 				possible=['u']
-				puts "\t[u]\tURL: #{@conf[nr]['url']}"
+				puts "  [u]\tURL: #{@conf[nr]['url']}"
 			end
-			puts "\t[m]\tTest method: #{@conf[nr]['test']}"
+			puts "  [m]\tTest method: #{@conf[nr]['test']}"
 			puts
-			puts "\t[a]\tUser-Agent: #{@conf[nr]['client']}"
-			puts "\t[r]\tReferer: #{@conf[nr]['referer']}"
-			puts "\t[l]\tAccept-Language: #{@conf[nr]['lang']}"
-			puts "\t[b]\tRange: #{@conf[nr]['range']}"
-			puts "\t[t]\tTimeout: #{@conf[nr]['timeout']}"
-			puts "\t[p]\tProxy: #{@conf[nr]['proxy']}"
-			puts
+			puts "  [a]\tUser-Agent: #{@conf[nr]['client']}"
+			puts "  [r]\tReferer: #{@conf[nr]['referer']}"
+			puts "  [l]\tAccept-Language: #{@conf[nr]['lang']}"
+			puts "  [b]\tRange: #{@conf[nr]['range']}"
+			puts "  [t]\tTimeout: #{@conf[nr]['timeout']}"
+			puts "  [p]\tProxy: #{@conf[nr]['proxy']}"
 			possible += ['m', 'a', 'r', 'l', 'b', 't', 'p']
+			if ['html','diff'].member?(@conf[nr]['test']) and nr != 0
+				puts "  [s]\tStart regexp: #{@conf[nr]['start']}"
+				puts "  [e]\tEnd regexp: #{@conf[nr]['end']}"
+				possible += ['s', 'e']
+			end
+			puts
+
 			if nr > 0
-				puts "\t[d]\tDelete URL from list."
+				puts "  [d]\tDelete URL from list."
 				possible << 'd'
 			end
-			puts "\t[f]\tI have finished."
+			puts "  [f]\tI have finished."
 			possible << 'f'
 			case (choice = choose(possible))
 				when 'u' then configure_url(nr)
@@ -333,6 +367,8 @@ Type a range. Examples:
 				when 'b' then configure_range(nr)
 				when 't' then configure_timeout(nr)
 				when 'p' then configure_proxy(nr)
+				when 's' then @conf[nr]['start'] = ask_regexp
+				when 'e' then @conf[nr]['end'] = ask_regexp
 				when 'd'
 					@conf.delete_at(nr)
 					return
@@ -486,6 +522,25 @@ class MainGet < Main
 		str.gsub(/([\r\n]|<[^<>]*>)+/,"\n").gsub(/[ \t]+/,' ').gsub(/([\r\n][ \t]+)+[\r\n]?/, "\n")
 	end
 
+	# cuts out string between first match to "starts" (a regexp string or 
+	# nil) and last match to "ends" (regexp string or nil)
+	def cutout(starts, ends, str)
+		unless starts.nil?
+			match = str.match(str_to_re(starts))
+			str = str[match.begin(0)..-1] unless match.nil?
+		end
+		unless ends.nil?
+			pos = 0
+			begin
+				match = str[pos..-1].match(str_to_re(ends))
+				pos += match.end(0) unless match.nil?
+			end until match.nil?
+			str = str[0..pos-1]
+		end
+		str += "\n" unless [?\n,?\r].member?(str[-1])
+		str
+	end
+
 	def fetchurls
 		@config.each do |e|
 			url = URI.parse(e['url'])
@@ -523,12 +578,12 @@ class MainGet < Main
 					else
 						resp = conn.get(path, header) # get body (GET request)
 						if method == 'diff'
-							diffdata(name(method, e['url'], getconf(e, 'range')), resp.body, &todo)
+							diffdata(name(method, e['url'], getconf(e, 'range')), cutout(e['start'],e['end'], resp.body), &todo)
 						elsif method == 'html'
-							diffdata(name(method, e['url'], getconf(e, 'range')), tagstrip(resp.body), &todo)
+							diffdata(name(method, e['url'], getconf(e, 'range')), tagstrip(cutout(e['start'],e['end'], resp.body)), &todo)
 						else
 							begin
-								if resp.body =~ eval('%r'+method)
+								if resp.body =~ str_to_re(method)
 									todo.call
 								end
 							rescue SyntaxError
