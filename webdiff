@@ -17,10 +17,12 @@
 # You may also tell me your thoughts/ideas/opinion about this tool.
 
 ProgName = 'webdiff'
-ProgVersion = '20070301'
+ProgVersion = '20070302'
 WorkDir = ENV['HOME']+'/.'+ProgName+'/'
 DefaultTimeout = 20
 DefaultTest = 'diff'
+
+$errors = 0
 
 def showversion
 	puts "#{ProgName} #{ProgVersion}\t\t(C) Stephan Beyer, 2004,2007, GNU GPL"
@@ -526,12 +528,26 @@ class MainGet < Main
 	# nil) and last match to "ends" (regexp string or nil)
 	def cutout(starts, ends, str)
 		unless starts.nil?
+			begin
+				match = str.match(str_to_re(starts))
+			rescue SyntaxError
+				$log.puts "Error on parsing start regex \"#{starts}\"."
+				$log.puts $!
+				raise
+			end
 			match = str.match(str_to_re(starts))
 			str = str[match.begin(0)..-1] unless match.nil?
 		end
 		unless ends.nil?
 			pos = 0
 			begin
+				begin
+					match = str[pos..-1].match(str_to_re(ends))
+				rescue SyntaxError
+					$log.puts "Error on parsing end regex \"#{ends}\"."
+					$log.puts $!
+					raise
+				end
 				match = str[pos..-1].match(str_to_re(ends))
 				pos += match.end(0) unless match.nil?
 			end until match.nil?
@@ -552,6 +568,7 @@ class MainGet < Main
 			header['Range'] = 'bytes='+getconf(e, 'range') unless getconf(e, 'range').nil?
 			header['Authorization'] ='Basic '+[url.userinfo].pack('m') unless url.userinfo.to_s.empty?
 			header['Connection'] = 'close' # default
+			header['Cache-Control'] = 'no-cache' # Thanks to Alexander Logvinov!
 			proxy, proxyport = getconf(e, 'proxy').split(/:/) unless getconf(e, 'proxy').nil?
 			proxyport = proxyport.to_i unless proxyport.nil?
 			timeout = getconf(e, 'timeout')
@@ -561,7 +578,7 @@ class MainGet < Main
 			path << '?'+url.query unless url.query.to_s.empty?
 			
 			begin
-				conn = Net::HTTP.new(url.host, url.port, proxy, proxyport)
+				conn = Net::HTTP.new(url.host, url.port, proxy, proxyport) # you can add "proxyuser", "proxypass" strings for proxy auth
 				conn.open_timeout = timeout.to_i
 				conn.start do
 					resp = {}
@@ -578,22 +595,33 @@ class MainGet < Main
 					else
 						resp = conn.get(path, header) # get body (GET request)
 						if method == 'diff'
-							diffdata(name(method, e['url'], getconf(e, 'range')), cutout(e['start'],e['end'], resp.body), &todo)
+							begin
+								diffdata(name(method, e['url'], getconf(e, 'range')), cutout(e['start'],e['end'], resp.body), &todo)
+							rescue SyntaxError
+								$errors += 1
+							end
 						elsif method == 'html'
-							diffdata(name(method, e['url'], getconf(e, 'range')), tagstrip(cutout(e['start'],e['end'], resp.body)), &todo)
+							begin
+								diffdata(name(method, e['url'], getconf(e, 'range')), tagstrip(cutout(e['start'],e['end'], resp.body)), &todo)
+							rescue SyntaxError
+								$errors += 1
+							end
 						else
 							begin
 								if resp.body =~ str_to_re(method)
 									todo.call
 								end
 							rescue SyntaxError
+								$log.puts "Error on parsing regex \"#{method}\"."
 								$log.puts $!
+								$errors += 1
 							end
 						end
 					end
 				end
-			rescue SocketError
+			rescue SocketError, Timeout::Error
 				$log.puts e['url']+': '+$!
+				$errors += 1
 			end
 		end
 	end
@@ -624,5 +652,8 @@ case ARGV[0]
 		#	MainGet.new
 		#rescue StandardError
 		#	$log.puts $!
+		#	$errors += 1
 		#end
+		### this is nicer, but ugly for bug reporting!
 end
+exit $errors

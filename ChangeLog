@@ -1,3 +1,10 @@
+2007-03-02  Stephan Beyer <s-beyer@gmx.net>
+
+  - added "Cache-Control: no-cache" header
+  - added "thanks to" section in manpage
+  - added exit codes and error counting
+  - fixed timeout exception handling
+
 2007-03-01  Stephan Beyer <s-beyer@gmx.net>
 
   - regex/eval warning in manpage

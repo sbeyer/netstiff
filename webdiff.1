@@ -22,6 +22,8 @@ instead.
 Webdiff exits after all configured web pages are checked. Occuring 
 warnings and errors leave a message in the log file 
 (\fI~/.webdiff/lastlog\fP) and are not written to stderr.
+The exit code will be the number of errors that occured. So exit
+code 0 is success.
 
 Use it with \fIcron\fP if you want to check for updates regularly.
 
@@ -113,6 +115,13 @@ Ruby. This means that you are able to do non\-regex\-related stuff
 using special strings as `regular expressions'. This is a big 
 security issue when using webdiff as a backend for e.g. web
 applications.
+
+.SH "THANKS TO"
+.LP
+I have to thank the following people for contributing to webdiff:
+Alexander Logvinov (for a lot of testing, bugfinding and
+feature ideas), Roland Krystian Alberciak (some discussion) and
+Martin Aumueller (made me using webdiff again).
 
 .SH "AUTHOR AND COPYRIGHT"
 .LP
