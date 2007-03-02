@@ -25,7 +25,7 @@ DefaultTest = 'diff'
 $errors = 0
 
 def showversion
-	puts "#{ProgName} #{ProgVersion}\t\t(C) Stephan Beyer, 2004,2007, GNU GPL"
+	puts "#{ProgName} #{ProgVersion}\t\t(C) 2004, 2007 Stephan Beyer, GNU GPL"
 end
 def showusage
 	puts <<-EOU
