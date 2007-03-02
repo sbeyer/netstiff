@@ -570,6 +570,7 @@ class MainGet < Main
 				header['Authorization'] ='Basic '+[url.userinfo].pack('m') unless url.userinfo.to_s.empty?
 				header['Connection'] = 'close' # default
 				header['Cache-Control'] = 'no-cache' # Thanks to Alexander Logvinov!
+				header['Pragma'] = 'no-cache' # this, too
 				proxy, proxyport = getconf(e, 'proxy').split(/:/) unless getconf(e, 'proxy').nil?
 				proxyport = proxyport.to_i unless proxyport.nil?
 				timeout = getconf(e, 'timeout')

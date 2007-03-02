@@ -1,6 +1,6 @@
 2007-03-02  Stephan Beyer <s-beyer@gmx.net>
 
-  - added "Cache-Control: no-cache" header
+  - added header "Cache-Control"/"Pragma" set to "no-cache"
   - added "thanks to" section in manpage
   - added exit codes and error counting
   - fixed timeout exception handling
