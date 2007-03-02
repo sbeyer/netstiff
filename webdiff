@@ -559,25 +559,25 @@ class MainGet < Main
 
 	def fetchurls
 		@config.each do |e|
-			url = URI.parse(e['url'])
-			todo = proc { puts url }
-			header = {}
-			header['User-Agent'] = getconf(e, 'client') unless getconf(e, 'client').nil?
-			header['Referer'] = getconf(e, 'referer') unless getconf(e, 'referer').nil?
-			header['Accept-Language'] = getconf(e, 'lang') unless getconf(e, 'lang').nil?
-			header['Range'] = 'bytes='+getconf(e, 'range') unless getconf(e, 'range').nil?
-			header['Authorization'] ='Basic '+[url.userinfo].pack('m') unless url.userinfo.to_s.empty?
-			header['Connection'] = 'close' # default
-			header['Cache-Control'] = 'no-cache' # Thanks to Alexander Logvinov!
-			proxy, proxyport = getconf(e, 'proxy').split(/:/) unless getconf(e, 'proxy').nil?
-			proxyport = proxyport.to_i unless proxyport.nil?
-			timeout = getconf(e, 'timeout')
-			method = getconf(e, 'test')
-			path = '/'
-			path = url.path unless url.path.to_s.empty?
-			path << '?'+url.query unless url.query.to_s.empty?
-			
 			begin
+				url = URI.parse(e['url'])
+				todo = proc { puts url }
+				header = {}
+				header['User-Agent'] = getconf(e, 'client') unless getconf(e, 'client').nil?
+				header['Referer'] = getconf(e, 'referer') unless getconf(e, 'referer').nil?
+				header['Accept-Language'] = getconf(e, 'lang') unless getconf(e, 'lang').nil?
+				header['Range'] = 'bytes='+getconf(e, 'range') unless getconf(e, 'range').nil?
+				header['Authorization'] ='Basic '+[url.userinfo].pack('m') unless url.userinfo.to_s.empty?
+				header['Connection'] = 'close' # default
+				header['Cache-Control'] = 'no-cache' # Thanks to Alexander Logvinov!
+				proxy, proxyport = getconf(e, 'proxy').split(/:/) unless getconf(e, 'proxy').nil?
+				proxyport = proxyport.to_i unless proxyport.nil?
+				timeout = getconf(e, 'timeout')
+				method = getconf(e, 'test')
+				path = '/'
+				path = url.path unless url.path.to_s.empty?
+				path << '?'+url.query unless url.query.to_s.empty?
+
 				conn = Net::HTTP.new(url.host, url.port, proxy, proxyport) # you can add "proxyuser", "proxypass" strings for proxy auth
 				conn.open_timeout = timeout.to_i
 				conn.start do
@@ -619,7 +619,7 @@ class MainGet < Main
 						end
 					end
 				end
-			rescue SocketError, Timeout::Error
+			rescue SocketError, Timeout::Error, URI::InvalidURIError
 				$log.puts e['url']+': '+$!
 				$errors += 1
 			end
