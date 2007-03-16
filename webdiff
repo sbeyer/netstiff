@@ -142,6 +142,7 @@ class Config
 				else
 					i += 1
 					@conf << {'url'=>(line=~%r(^http://) ? '':'http://')+line}
+					# FIXME what about https://?
 				end
 			end
 		end
@@ -255,11 +256,11 @@ on the command line.
 	end
 
 	def configure_url(nr)
-		puts "\nPlease type the correct URL of the web page you want to check for updates:"
+		puts "\nPlease type the correct URI of the web page you want to check for updates:"
 		if @conf[nr].nil?
-			@conf[nr] = {'url'=>'http://'+readln('http://')}
+			@conf[nr] = {'url'=>readln('> ')}
 		else
-			@conf[nr]['url'] = 'http://'+readln('http://')
+			@conf[nr]['url'] = readln('> ')
 		end
 	end
 	def configure_testmethod(nr)
