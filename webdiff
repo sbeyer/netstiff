@@ -163,7 +163,7 @@ on the command line.
 		if configure_mainmenu # save config
 			File.open(WorkDir+'config', 'w') do |out|
 				out.print <<-EOH
-# webdiff configuration file, type `webdiff -c' to configure
+# #{ProgName} configuration file, type `#{ProgName} -c' to configure
 # Format:
 # # comment
 # + <globalvariable> <globalvalue>
@@ -180,7 +180,7 @@ on the command line.
 # 'diff'/'html' test modes have two extra variables:
 # start <start regexp>		and		end <end regexp>	
 # These two are nice for dynamic web pages with a more interesting static 
-# part. Set start and end regexp, and then webdiff only diffs the content
+# part. Set start and end regexp, and then #{ProgName} only diffs the content
 # between the first 'start' and the last 'end' match, and not a change 
 # like "xx users online" or a random (fortune) server signature.
 #
