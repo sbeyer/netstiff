@@ -1,7 +1,17 @@
 I have to thank the following people for contributing to webdiff:
- - Lars Christensen (for writing libalgorithm-diff for Ruby)
- - Alexander Logvinov (for a lot of testing, bugfinding and feature ideas)
- - Dr. Jens Schleusener (pointed to problems using outdated libalgorithm-diff)
- - Eduard Bloch (pointed me to name conflicts with websec's webdiff)
- - Roland Krystian Alberciak (some discussion)
- - Martin Aumueller (made me using webdiff again).
+ - Lars Christensen 
+   * wrote libalgorithm-diff for Ruby
+ - Alexander Logvinov
+   * testing
+   * bugfinding
+   * feature ideas
+   * FreeBSD port
+ - Dr. Jens Schleusener
+   * pointed to problems using outdated libalgorithm-diff
+   * feature idea
+ - Eduard Bloch 
+   * pointed me to name conflicts with websec's webdiff
+ - Roland Krystian Alberciak
+   * discussion
+ - Martin Aumueller
+   * made me using webdiff again
