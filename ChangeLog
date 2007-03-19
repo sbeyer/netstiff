@@ -6,6 +6,7 @@
   - changed diff output to unified diff format
   - removed "THANKS TO" section from manual page and added THANKSTO
     file instead
+  - added rescuers for some more exceptions
 
 2007-03-02  Stephan Beyer <s-beyer@gmx.net>
 
