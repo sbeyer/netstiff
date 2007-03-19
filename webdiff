@@ -1,26 +1,23 @@
 #!/usr/bin/ruby
-# (C) 2004,2007, Stephan Beyer, GPL
+# (C) 2004,2007, Stephan Beyer, GNU GPL
 #
 # requirements:
 #	* ruby standard distribution (net::http, uri, pstore, getoptlong)
 #	  http://www.ruby-lang.org (at least version 1.8)
-#	* libalgorithm-diff for ruby
-#	  http://users.cybercity.dk/~dsl8950/ruby/diff.html
 # recommended:
 #	* GNU readline for ruby (for interactive configuration)
 # wishlist/todo?
-#	* correct diff unified format ranges output(!)
 #	* https, ftp
-#	* use rdtool to create manpage? No.
 #	* nicer code ;)
 # Please tell me if you find any bugs: Stephan Beyer <s-beyer@gmx.net>
 # You may also tell me your thoughts/ideas/opinion about this tool.
 
 ProgName = 'webdiff'
-ProgVersion = '20070302'
+ProgVersion = '20070319'
 WorkDir = ENV['HOME']+'/.'+ProgName+'/'
 DefaultTimeout = 20
 DefaultTest = 'diff'
+DefaultContext = 3
 
 $errors = 0
 
@@ -419,9 +416,253 @@ class Main
 	end
 end
 
-class MainDiff < Main
-	require 'algorithm/diff'
+# the following module code has been taken from:
+# 	libalgorithm-diff-ruby version 0.4
+# and has been changed.
+# 
+# Original copyright notice:
+# # algorithm/diff - a Ruby module to compute difference sets between two
+# # objects. Copyright (c) 2001-2002 Lars Christensen.
+# #
+# #  This program is free software; you can redistribute it and/or modify
+# # it under the terms of the GNU General Public License as published by
+# # the Free Software Foundation; either version 2 of the License, or
+# # (at your option) any later version.
+# #
+# # This program is distributed in the hope that it will be useful, but
+# # WITHOUT ANY WARRANTY; without even the implied warranty of
+# # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+# # General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program; if not, write to the Free Software Foundation, 
+# Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+module Diff
+	attr_reader :diffs
 
+	# Change notes:
+	# The mix-in module Diffable has been removed.
+	# The functions reverse_hash and replacenextlarger have been put here.
+	# The lcs function has just been copied, reindented and reverse_hash / 
+	# replacenextlarger changes have been applied.
+	# makediff has been altered to yield both indices and no string. (This is not
+	# really needed, but more `natural' in my opinion.)
+	# diff has been rewritten to produce a imho `nicer' output.
+	# groupwise and unified have been completely written by me (sbeyer) and are
+	# not part of the original libalgorithm-diff-ruby package.
+	
+	# Create a hash that maps elements of the array to arrays of indices
+	# where the elements are found.
+	def Diff.reverse_hash(obj, range = (0...obj.length))
+		revmap = {}
+		range.each do |i|
+			elem = obj[i]
+			if revmap.has_key? elem
+				revmap[elem].push i
+			else
+				revmap[elem] = [i]
+			end
+		end
+		revmap
+	end
+	
+	# Replace the first element of obj which is larger than value. Assumes that
+	# the element indexed by high, if given is larger than value.
+	def Diff.replacenextlarger(obj, value, high = nil)
+		high ||= obj.length
+		low = 0
+		index = found = nil
+		while low < high
+			index = (high+low) >> 1
+			found = obj[index]
+			if value > found		# this first, most common case
+				low = index + 1
+			elsif value == found
+				return nil
+			else
+				high = index
+			end
+		end
+		obj[low] = value
+		low
+	end
+
+	def Diff.lcs(a, b)
+		astart = 0
+		bstart = 0
+		afinish = a.length-1
+		bfinish = b.length-1
+		mvector = []
+
+		# First we prune off any common elements at the beginning
+		while (astart <= afinish && bstart <= afinish && a[astart] == b[bstart])
+			mvector[astart] = bstart
+			astart += 1
+			bstart += 1
+		end
+
+		# now the end
+		while (astart <= afinish && bstart <= bfinish && a[afinish] == b[bfinish])
+			mvector[afinish] = bfinish
+			afinish -= 1
+			bfinish -= 1
+		end
+
+		bmatches = reverse_hash(b, bstart..bfinish)
+		thresh = []
+		links = []
+
+		(astart..afinish).each do |aindex|
+			aelem = a[aindex]
+			next unless bmatches.has_key? aelem
+			k = nil
+			bmatches[aelem].reverse_each do |bindex|
+				if k && (thresh[k] > bindex) && (thresh[k-1] < bindex)
+					thresh[k] = bindex
+				else
+					k = replacenextlarger(thresh, bindex, k)
+				end
+				links[k] = [ k!=0 && links[k-1], aindex, bindex ] if k
+			end
+		end
+
+		if !thresh.empty?
+			link = links[thresh.length-1]
+			while link
+				mvector[link[1]] = link[2]
+				link = link[0]
+			end
+		end
+
+		return mvector
+	end
+
+	def Diff.makediff(a, b)
+		mvector = Diff.lcs(a, b)
+		ai = bi = 0
+		while ai < mvector.length
+			bline = mvector[ai]
+			if bline
+				while bi < bline
+					yield :+, ai, bi
+					bi += 1
+				end
+				bi += 1
+			else
+				yield :-, ai, bi
+			end
+			ai += 1
+		end
+		while ai < a.length
+			yield :-, ai, bi
+			ai += 1
+		end
+		while bi < b.length
+			yield :+, ai, bi
+			bi += 1
+		end
+		1
+	end
+
+	def Diff.diff(a, b, &block)
+		diffs = [[:info, a.length, b.length]] # dirty trick
+		block ||= proc do |action, li, ri|
+			diffs << [action, li, ri]
+		end
+		Diff.makediff(a, b, &block)
+		diffs
+	end
+
+	# group diff by context
+	def Diff.groupwise(diff, context)
+		(_,alen,blen) = diff.shift # dirty trick to get length information
+		groups = [] # array of groups
+
+		unless diff.empty?
+			g = [] # one group
+			low = 0
+			(el0,el1,el2) = diff.shift
+
+			begin
+				[low, el1-context].max.upto(el1-1) do |i|
+					g.push [:eq, i, i+el2-el1]
+				end
+				begin
+					g.push [el0,el1,el2]
+					low = el1
+					low += 1 if el0 == :-
+					
+					if diff.empty?
+						el1 = blen
+						low.upto([low+context,alen].min-1) do |i|
+							g.push [:eq, i, i+blen-alen]
+						end
+						break
+					else
+						(el0,el1,el2) = diff.shift
+						low.upto([el1,low+context].min-1) do |i|
+							g.push [:eq, i, i+el2-el1]
+						end
+					end
+				end while el1 - low <= context
+
+				if el1 - low <= 2*context and el1 != blen
+					low += 2 # didn't figure out why, but this
+					         # worked on all examples!
+					next
+				end
+
+				groups.push g
+				yield g
+				g = []
+			end until diff.empty?
+		end
+		groups
+	end
+
+	def Diff.unified(la,ra,context=3)
+		groupwise(diff(la,ra),context) do |g|
+			# count :- and :+
+			minus = g.find_all do |z| z[0]==:- end.length
+			plus = g.find_all do |z| z[0]==:+ end.length
+			equal = g.length - minus - plus
+			minus += equal
+			plus += equal
+
+			str = '@@ -'
+			if minus > 1
+				str << "#{g[0][1]+1},#{minus}"
+			elsif minus == 1
+				str << (g[0][1]+1).to_s
+			else # minus == 0
+				str << "#{g[0][1]},0"
+			end
+			str << ' +'
+			if plus > 1
+				str << "#{g[0][2]+1},#{plus}"
+			elsif plus == 1
+				str << (g[0][2]+1).to_s
+			else # plus == 0
+				str << "#{g[0][2]},0"
+			end
+			str << " @@\n"
+			yield str
+
+			g.each do |x|
+				if x[0] == :eq then
+					str = ' '+la[x[1]]
+				elsif x[0] == :- then
+					str = '-'+la[x[1]]
+				else
+					str = '+'+ra[x[2]]
+				end
+				yield str
+			end
+		end
+	end
+end
+
+class MainDiff < Main
 	def initialize
 		super
 		@config.each do |e|
@@ -436,27 +677,8 @@ class MainDiff < Main
 			file1, file2 = [], []
 			list[0].each_line do |line| file1 << line end
 			list[1].each_line do |line| file2 << line end
-			printdiff(file1.diff(file2))
-		end
-	end
-
-	def diffrange(a, b)
-		if b == 1
-			"#{a}"
-		else
-			"#{a},#{b}"
-		end
-	end
-
-	def printdiff(diff)
-		diff.each do |d|
-			primline = d[1]+1
-			lines = d[2].length
-			# FIXME: this is not the correct unified diff format!
-			puts "@@ -#{diffrange(primline,lines)} @@" if d[0] == :-
-			puts "@@ +#{diffrange(primline,lines)} @@" if d[0] == :+
-			d[2].each do |line|
-				print d[0].to_s+line
+			Diff.unified(file1,file2,DefaultContext) do |str|
+				print str
 			end
 		end
 	end

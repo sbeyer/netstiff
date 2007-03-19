@@ -107,21 +107,11 @@ and webdiff forgets about the changes.
 
 .SH "BUGS"
 .LP
-The \fB\-\-diff\fR output format is not equal to the unified format of
-\fIdiff(1)\fP, but it is related.
-
 The regular expression stuff is using the \fIeval\fP function of
 Ruby. This means that you are able to do non\-regex\-related stuff
 using special strings as `regular expressions'. This is a big 
 security issue when using webdiff as a backend for e.g. web
 applications.
-
-.SH "THANKS TO"
-.LP
-I have to thank the following people for contributing to webdiff:
-Alexander Logvinov (for a lot of testing, bugfinding and
-feature ideas), Roland Krystian Alberciak (some discussion) and
-Martin Aumueller (made me using webdiff again).
 
 Feel free to send feedback, bug reports, etc.
 

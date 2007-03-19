@@ -1,3 +1,12 @@
+2007-03-19  Stephan Beyer <s-beyer@gmx.net>
+
+  - got rid of libalgorithm-diff-ruby by including its code inline.
+    Thanks to Lars Christensen although I didn't get to contact him
+    because all e-mail addresses that I got, didn't work!
+  - changed diff output to unified diff format
+  - removed "THANKS TO" section from manual page and added THANKSTO
+    file instead
+
 2007-03-02  Stephan Beyer <s-beyer@gmx.net>
 
   - added header "Cache-Control"/"Pragma" set to "no-cache"
