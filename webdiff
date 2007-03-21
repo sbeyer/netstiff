@@ -2,22 +2,26 @@
 # (C) 2004,2007, Stephan Beyer, GNU GPL
 #
 # requirements:
-#	* ruby standard distribution (net::http, uri, pstore, getoptlong)
+#	* ruby standard distribution (net::http, uri, pstore)
 #	  http://www.ruby-lang.org (at least version 1.8)
 # recommended:
 #	* GNU readline for ruby (for interactive configuration)
 # wishlist/todo?
 #	* https, ftp
 #	* nicer code ;)
+#	* a get-and-diff-at-once ("fastcheck"/"fetchdiff") command [requested]
+#	* an option (-S or -L) to show lastlog on stderr
+#	* saner saving and usage of external tools to format `html' diffs
 # Please tell me if you find any bugs: Stephan Beyer <s-beyer@gmx.net>
 # You may also tell me your thoughts/ideas/opinion about this tool.
 
 ProgName = 'webdiff'
-ProgVersion = '20070319'
-WorkDir = ENV['HOME']+'/.'+ProgName+'/'
+ProgVersion = '20070321'
 DefaultTimeout = 20
 DefaultTest = 'diff'
 DefaultContext = 3
+$workdir = ENV['HOME']+'/.'+ProgName+'/'
+
 
 $errors = 0
 
@@ -27,21 +31,80 @@ end
 def showusage
 	puts <<-EOU
 
-Usage:	#{$0} [option]
+Usage:	#{$0} [options] [command]
 
-Option can be one of:
-	--configure, -c		Reconfigure #{ProgName}
-	--diff, -d		Print the current differences
-	--help, -h		Print this help
-	--reset, -r		Reset current differences
-	--version, -v		Print current version
+Command can be one of:
+	configure	configure #{ProgName}
+	diff		show the current differences
+	get		fetch data from URIs and show changed ones
+	help		show this help
+	reset		reset current differences
+	version		show current version
 
-Further options are ignored.
+`get' is used, if command is omitted. Commands may be shortened down to one
+character (e.g. `c' instead of `configure'). Leading dashes are ignored.
+Without configuration, some commands will act like `configure'.
+
+Options:
+	--workdir DIR, -W DIR	specify working directory
+	                       	[#{$workdir}]
+
 See the manual page `man 1 #{ProgName}'.
 
 Have fun!
 	EOU
 end
+def opterr(s)
+	STDERR.puts "Error: #{s}\nAborting. See `#{$0} -h' for help."
+	exit 1
+end
+def optdo(opt,x,a)
+	case opt
+	when :W
+		$workdir = x
+		$workdir += '/' if $workdir[-1] != ?/
+	end
+end
+def options
+	args = 0
+	opt = nil
+	ARGV[0..-2].each do |z|
+		if args.zero?
+			case z
+			when '--workdir', '-W'
+				opt = :W
+				args = 1
+			else
+				opterr("Unknown option: #{z}")
+			end
+		else
+			optdo(opt,z,args)
+			args -= 1
+		end
+	end
+	if args > 1
+		opterr("Too many arguments to option -#{opt} given.")
+		exit 1
+	elsif args == 1
+		optdo(opt,ARGV.last,args)
+		'g'
+	elsif ARGV.length == 0
+		'g'
+	else
+		ARGV.last
+	end
+end
+def getcmd(c)
+	c = c[1..-1] while c[0] == ?-
+	command=['configure','diff','help','reset','version','get']
+
+	(c.length-1).downto(0) do |i|
+		command.delete_if do |x| c[i] != x[i] end
+		break if command.empty?
+	end
+	opterr "Could not recognize command." if command.length != 1
+	command.pop
+end	
 
 def name(test, url, suffix=nil)
 	if suffix.nil?
@@ -82,7 +145,7 @@ end
 class Store
 	require 'pstore'
 	def initialize
-		@db = PStore.new(WorkDir+'store')
+		@db = PStore.new($workdir+'store')
 	end
 	def each
 		@db.transaction do
@@ -128,7 +191,7 @@ class Config
 
 	def readconfigfile
 		i = 0
-		File.open(WorkDir+'config', 'r') do |conffile|
+		File.open($workdir+'config', 'r') do |conffile|
 			conffile.each_line do |line|
 				line.strip!
 				if line =~ /^#/ or line.empty?
@@ -153,12 +216,12 @@ class Config
 
 This is the #{ProgName} #{ProgVersion} interactive configuration tool.
 #{ProgName} uses a simple human-readable configuration file
-	#{WorkDir+'config'}
+	#{$workdir+'config'}
 but you can always use this tool by executing `#{$0} -c' 
 on the command line.
 		EOD
 		if configure_mainmenu # save config
-			File.open(WorkDir+'config', 'w') do |out|
+			File.open($workdir+'config', 'w') do |out|
 				out.print <<-EOH
 # #{ProgName} configuration file, type `#{ProgName} -c' to configure
 # Format:
@@ -219,16 +282,16 @@ on the command line.
 			puts "  [f]\tFinished (exit & save)"
 			puts "  [x]\tExit without saving"
 			case (c = choose(possible))
-				when 'f'
-					return true
-				when 'x'
-					return false
-				when 'n'
-					nr = @conf.length
-					configure_url(nr)
-					configure_testmethod(nr)
-				else
-					configure_urlmenu(c.to_i)
+			when 'f'
+				return true
+			when 'x'
+				return false
+			when 'n'
+				nr = @conf.length
+				configure_url(nr)
+				configure_testmethod(nr)
+			else
+				configure_urlmenu(c.to_i)
 			end
 		end
 	end
@@ -359,20 +422,20 @@ Type a range. Examples:
 			puts "  [f]\tI have finished."
 			possible << 'f'
 			case (choice = choose(possible))
-				when 'u' then configure_url(nr)
-				when 'm' then configure_testmethod(nr)
-				when 'a' then configure_useragent(nr)
-				when 'r' then configure_referer(nr)
-				when 'l' then configure_lang(nr)
-				when 'b' then configure_range(nr)
-				when 't' then configure_timeout(nr)
-				when 'p' then configure_proxy(nr)
-				when 's' then @conf[nr]['start'] = ask_regexp
-				when 'e' then @conf[nr]['end'] = ask_regexp
-				when 'd'
-					@conf.delete_at(nr)
-					return
-				when 'f' then return
+			when 'u' then configure_url(nr)
+			when 'm' then configure_testmethod(nr)
+			when 'a' then configure_useragent(nr)
+			when 'r' then configure_referer(nr)
+			when 'l' then configure_lang(nr)
+			when 'b' then configure_range(nr)
+			when 't' then configure_timeout(nr)
+			when 'p' then configure_proxy(nr)
+			when 's' then @conf[nr]['start'] = ask_regexp
+			when 'e' then @conf[nr]['end'] = ask_regexp
+			when 'd'
+				@conf.delete_at(nr)
+				return
+			when 'f' then return
 			end
 		end
 	end
@@ -809,12 +872,12 @@ class MainGet < Main
 					if ['size','md5sum','date'].member?(method)
 						resp = conn.head(path, header) # only need header (HEAD request)
 						case method
-							when 'size'
-								updatedata(name(method,e['url']), resp['Content-Length'], &todo)
-							when 'md5sum'
-								updatedata(name(method,e['url']), resp['Content-MD5'], &todo)
-							when 'date'
-								updatedata(name(method,e['url']), resp['Last-Modified'], &todo)
+						when 'size'
+							updatedata(name(method,e['url']), resp['Content-Length'], &todo)
+						when 'md5sum'
+							updatedata(name(method,e['url']), resp['Content-MD5'], &todo)
+						when 'date'
+							updatedata(name(method,e['url']), resp['Last-Modified'], &todo)
 						end
 					else
 						resp = conn.get(path, header) # get body (GET request)
@@ -852,33 +915,38 @@ class MainGet < Main
 	end
 end
 
-Dir.mkdir(WorkDir) unless File.exist?(WorkDir)
-$log = File.new(WorkDir+'lastlog', 'w')
+
+### This is int main(...) ;-)
+
+command = getcmd(options) # options is a function with side effects
+
+Dir.mkdir($workdir) unless File.exist?($workdir)
+$log = File.new($workdir+'lastlog', 'w')
 END {
 	$log.close
 }
 
-# options
-case ARGV[0]
-	when '--configure', '-c'
-		MainConfigure.new
-	when '--diff', '-d'
-		MainDiff.new
-	when '--help', '-h'
-		showversion
-		showusage
-	when '--reset', '-r'
-		MainReset.new
-	when '--version', '-v'
-		showversion
-	else
-		MainGet.new
-		#begin
-		#	MainGet.new
-		#rescue StandardError
-		#	$log.puts $!
-		#	$errors += 1
-		#end
-		### this is nicer, but ugly for bug reporting!
+# commands
+case command
+when 'configure'
+	MainConfigure.new
+when 'diff'
+	MainDiff.new
+when 'help'
+	showversion
+	showusage
+when 'reset'
+	MainReset.new
+when 'version'
+	showversion
+else
+	MainGet.new
+	#begin
+	#	MainGet.new
+	#rescue StandardError
+	#	$log.puts $!
+	#	$errors += 1
+	#end
+	### this is nicer, but ugly for bug reporting!
 end
 exit $errors

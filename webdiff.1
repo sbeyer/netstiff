@@ -1,10 +1,10 @@
-.TH "WEBDIFF" "1" "20070302" "sbeyer" "web"
+.TH "WEBDIFF" "1" "20070321" "sbeyer" "web"
 .SH "NAME"
 .LP
 webdiff \- powerful and easy tool to check for web page updates
 .SH "SYNOPSIS"
 .LP
-\fBwebdiff\fR [\fIoption\fP]
+\fBwebdiff\fR [\fIoptions\fP] [\fIcommand\fP]
 .SH "DESCRIPTION"
 .LP
 Webdiff is a powerful and easy-to-use tool which checks for web page
@@ -12,7 +12,7 @@ updates. Updates are recognized using several test criteria (\fCdiff\fR,
 \fChtml\fR, \fCsize\fR, \fCdate\fR, \fCmd5sum\fR, \fCregexp\fR). Please
 see the configurator for more information on these methods.
 
-Without any given options, webdiff will only check for updates 
+Without given command, webdiff will only check for updates 
 of the specified URIs and only print those that changed, one per
 line, so that the output of webdiff can easily be used by 
 further scripts (e.g. \fIwget\fP or \fImail\fP).
@@ -27,13 +27,18 @@ code 0 is success.
 
 Use it with \fIcron\fP if you want to check for updates regularly.
 
-.SH "OPTIONS"
+.SH "COMMANDS"
 .LP
-You can only pass one argument. All further arguments to webdiff
-are ignored.
+You can only pass one command to webdiff. It has to be the last argument
+in the argument list.
+
+Commands may be shortened down to one character (e.g. `c' instead of 
+`configure'). Leading dashes are ignored.
+
+If you start webdiff without command, `get' will be used.
 .TP
-\fB\-\-configure\fR, \fB\-c\fR
-Use this option if you want to start the configurator, the interactive
+\fBconfigure\fR
+Use this command if you want to start the configurator, the interactive
 configuration tool of webdiff. Of course, you may also edit the 
 configuration file in \fI~/.webdiff/config\fP by hand. Using the 
 configurator is recommended if you are a new webdiff user, because
@@ -47,23 +52,36 @@ rerun webdiff. This is a feature.
 If the config file does not exit, the configuration tool is started 
 automatically.
 .TP
-\fB\-\-diff\fR, \fB\-d\fR
-Use this option if you want to get a \fIdiff(1)\fP between the last two
+\fBdiff\fR
+Use this command if you want to see the differences between the last two
 versions of the web pages that are configured with test method \fCdiff\fR
-or \fChtml\fR. See \fBBUGS\fR.
+or \fChtml\fR. See \fIdiff(1)\fP. 
 .TP
-\fB\-\-help\fR, \fB\-h\fR
-Use this option to get usage information about webdiff. To be honest,
+\fBget\fR
+Use this command if you want webdiff to fetch the data from the 
+specified URIs and show you only those that changed, one per line.
+.TP
+\fBhelp\fR
+Use this command to get usage information about webdiff. To be honest,
 this manual page in conjunction with the configurator is a better 
 documentation.
 .TP
-\fB\-\-reset\fR, \fB\-r\fR
-Use this option after you noticed all differences with the \fB\-d\fR 
-option, so that \fB\-d\fR will not show you the same changes again and
-again.
+\fBreset\fR
+Use this command after you noticed all differences with the \fBdiff\fR 
+command (see above), so that \fBdiff\fR will not show you the same changes
+again and again.
 .TP
-\fB\-\-version\fR, \fB\-v\fR
-This option will display version number and copyright.
+\fBversion\fR
+This command will display version number and copyright.
+
+.SH "OPTIONS"
+.LP
+You may pass the following options.
+.TP
+\fB--workdir DIR, -W DIR\fR
+Use this option if you want to specify another working directory. The
+working directory is the directory where webdiff reads the configuration
+file, stores the downloaded data and writes it logs. See \fBBUGS\fR.
 
 .SH "RESTRICTIONS"
 .LP
@@ -76,7 +94,7 @@ usual web pages. No logged message. Please check on your own.
 .LP
 You want to add a new URI webdiff should check for updates.
 .nf
-\&        \fCwebdiff \-c\fR
+\&        \fCwebdiff conf\fR
 .fi
 The configurator is not described here. I know some weaknesses in
 usability, but you can get along with it. When you are seeing your 
@@ -92,16 +110,16 @@ So you let webdiff check for updates.
 .fi
 It is printing an URI! Let's see the changes!
 .nf
-\&        \fCwebdiff \-d\fR
+\&        \fCwebdiff diff\fR
 .fi
 Oh, it is so much, that it does not fit on a screen!
 .nf
-\&        \fCwebdiff \-d | pager\fR
+\&        \fCwebdiff d | pager\fR
 .fi
 Now you are satisfied because you read all the changes. So you finally
 do
 .nf
-\&        \fCwebdiff \-r\fR
+\&        \fCwebdiff reset\fR
 .fi
 and webdiff forgets about the changes.
 
@@ -111,7 +129,8 @@ The regular expression stuff is using the \fIeval\fP function of
 Ruby. This means that you are able to do non\-regex\-related stuff
 using special strings as `regular expressions'. This is a big 
 security issue when using webdiff as a backend for e.g. web
-applications.
+applications. So do NOT do it and NEVER start webdiff on foreign,
+unchecked configurations (\fB-W\fR can be dangerous). 
 
 Feel free to send feedback, bug reports, etc.
 
