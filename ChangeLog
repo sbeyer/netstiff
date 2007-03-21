@@ -1,3 +1,7 @@
+2007-03-21  Stephan Beyer <s-beyer@gmx.net>
+
+  - added simple GNU Makefile
+
 2007-03-19  Stephan Beyer <s-beyer@gmx.net>
 
   - got rid of libalgorithm-diff-ruby by including its code inline.
