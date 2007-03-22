@@ -1,3 +1,8 @@
+2007-03-22  Stephan Beyer <s-beyer@gmx.net>
+
+  - internal changes, minor bugfixes at the same time
+  - external HTML dumpers for 'html' method can now be used [requested]
+
 2007-03-21  Stephan Beyer <s-beyer@gmx.net>
 
   - added simple GNU Makefile [requested]

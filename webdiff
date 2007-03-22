@@ -7,21 +7,18 @@
 # recommended:
 #	* GNU readline for ruby (for interactive configuration)
 # wishlist/todo?
-#	* https, ftp
-#	* nicer code ;)
+#	* ftp?
 #	* a get-and-diff-at-once ("fastcheck"/"fetchdiff") command [requested]
 #	* an option (-S or -L) to show lastlog on stderr
-#	* saner saving and usage of external tools to format `html' diffs
 # Please tell me if you find any bugs: Stephan Beyer <s-beyer@gmx.net>
 # You may also tell me your thoughts/ideas/opinion about this tool.
 
 ProgName = 'webdiff'
-ProgVersion = '20070321'
+ProgVersion = '20070322'
 DefaultTimeout = 20
 DefaultTest = 'diff'
 DefaultContext = 3
 $workdir = ENV['HOME']+'/.'+ProgName+'/'
-
 
 $errors = 0
 
@@ -52,48 +49,9 @@ Options:
 See the manual page `man 1 #{ProgName}'.
 
 Have fun!
-	EOU
+		EOU
 end
-def opterr(s)
-	STDERR.puts "Error: #{s}\nAborting. See `#{$0} -h' for help."
-	exit 1
-end
-def optdo(opt,x,a)
-	case opt
-	when :W
-		$workdir = x
-		$workdir += '/' if $workdir[-1] != ?/
-	end
-end
-def options
-	args = 0
-	opt = nil
-	ARGV[0..-2].each do |z|
-		if args.zero?
-			case z
-			when '--workdir', '-W'
-				opt = :W
-				args = 1
-			else
-				opterr("Unknown option: #{z}")
-			end
-		else
-			optdo(opt,z,args)
-			args -= 1
-		end
-	end
-	if args > 1
-		opterr("Too many arguments to option -#{opt} given.")
-		exit 1
-	elsif args == 1
-		optdo(opt,ARGV.last,args)
-		'g'
-	elsif ARGV.length == 0
-		'g'
-	else
-		ARGV.last
-	end
-end
+
 def getcmd(c)
 	c = c[1..-1] while c[0] == ?-
 	command=['configure','diff','help','reset','version','get']
@@ -102,9 +60,9 @@ def getcmd(c)
 		command.delete_if do |x| c[i] != x[i] end
 		break if command.empty?
 	end
-	opterr "Could not recognize command." if command.length != 1
+	Options.err "Could not recognize command." if command.length != 1
 	command.pop
-end	
+end
 
 def name(test, url, suffix=nil)
 	if suffix.nil?
@@ -142,6 +100,49 @@ def str_to_re(str)
 # <apeiros> the obvious: eval or split the expression and use Regexp.new
 end
 
+module Options
+	def Options.err(s)
+		STDERR.puts "Error: #{s}\nAborting. See `#{$0} -h' for help."
+		exit 1
+	end
+	def Options.handle(opt,x,a)
+		case opt
+		when :W
+			$workdir = x
+			$workdir += '/' if $workdir[-1] != ?/
+		end
+	end
+	def Options.init
+		args = 0
+		opt = nil
+		ARGV[0..-2].each do |z|
+			if args.zero?
+				case z
+				when '--workdir', '-W'
+					opt = :W
+					args = 1
+				else
+					err("Unknown option: #{z}")
+				end
+			else
+				handle(opt,z,args)
+				args -= 1
+			end
+		end
+		if args > 1
+			err("Too many arguments to option -#{opt} given.")
+			exit 1
+		elsif args == 1
+			handle(opt,ARGV.last,args)
+			'g'
+		elsif ARGV.length == 0
+			'g'
+		else
+			ARGV.last
+		end
+	end
+end
+
 class Store
 	require 'pstore'
 	def initialize
@@ -166,11 +167,10 @@ class Store
 end
 
 class Config
-	def initialize
-		@glob = {}
+	def initialize(use=true)
 		@conf = [{}]
 		begin
-			readconfigfile
+			readconfigfile use
 		rescue SystemCallError
 			$log.puts($!)
 			$log.puts('configuring')
@@ -182,14 +182,10 @@ class Config
 		@conf.each(&block)
 	end
 	def [](key)
-		if key.class == String
-			@glob[key]
-		else
-			@conf[key]
-		end
+		@conf[key]
 	end
 
-	def readconfigfile
+	def readconfigfile use
 		i = 0
 		File.open($workdir+'config', 'r') do |conffile|
 			conffile.each_line do |line|
@@ -201,16 +197,29 @@ class Config
 					@conf[i].merge!({k=>v})
 				else
 					i += 1
-					@conf << {'url'=>(line=~%r(^http://) ? '':'http://')+line}
-					# FIXME what about https://?
+					@conf << {'url'=>(line=~%r(^https?://) ? '':'http://')+line}
 				end
 			end
 		end
-		@glob = @conf.shift
+
+		if use
+			glob = @conf.shift
+
+			# Default values overwritten?
+			glob['test'] = DefaultTest if glob['test'].nil?
+			glob['timeout'] = DefaultTimeout if glob['timeout'].nil?
+
+			# Now set variables in every URI, if not set
+			glob.each do |gvar,gval|
+				next if gval.nil?
+				@conf.each_with_index do |e,i|
+					e[gvar] = gval if e[gvar].nil?
+				end
+			end
+		end
 	end
 
-	def configure(reconfigure=false)
-		@conf.unshift(@glob) if reconfigure
+	def configure
 		showversion
 		print <<-EOD
 
@@ -227,23 +236,27 @@ on the command line.
 # Format:
 # # comment
 # + <globalvariable> <globalvalue>
+# + ...
 # <url1>
-# + <variable> <value>
+# + <variable> <value-for-url1>
 # + ...
 # <url2>
 # ...
 #
 # variables are: client, lang, proxy, referer, test, timeout, range
-# <test> can be html, diff, size, date, md5sum or a <regexp>
-# diff is the default. proxy must be in the format <host>:<port>
+# <test> can be html, diff, size, date, md5sum or a /regexp/
+# diff is the default. The proxy value must be in the format <host>:<port>
 # 
 # 'diff'/'html' test modes have two extra variables:
-# start <start regexp>		and		end <end regexp>	
+# start /start regex/		and		end /end regex/	
 # These two are nice for dynamic web pages with a more interesting static 
-# part. Set start and end regexp, and then #{ProgName} only diffs the content
+# part. Set start and end regex, and then #{ProgName} only diffs the content
 # between the first 'start' and the last 'end' match, and not a change 
 # like "xx users online" or a random (fortune) server signature.
-#
+# 
+# 'html' has a further extra variable: htmlcmd <command to htmldumper>
+# e.g. " + htmlcmd lynx -dump" or " + htmlcmd html2text"
+# 
 # All variable settings are optional.
 # Have fun! sbeyer
 				EOH
@@ -256,6 +269,7 @@ on the command line.
 					out.puts "  + range\t"+e['range'] unless e['range'].nil?
 					out.puts "  + timeout\t"+e['timeout'] unless e['timeout'].nil?
 					out.puts "  + proxy\t"+e['proxy'] unless e['proxy'].nil?
+					out.puts "  + htmlcmd\t"+e['htmlcmd'] if e['test']=='html' and not e['htmlcmd'].nil?
 					if ['html','diff'].member?(e['test'])
 						out.puts "  + start\t"+e['start'] unless e['start'].nil?
 						out.puts "  + end \t"+e['end'] unless e['end'].nil?
@@ -348,17 +362,28 @@ Choose the TEST METHOD, the way of looking for changes. Type:
 		@conf[nr]['test'] = choose(['diff','html','size','date','md5sum','regexp'])
 		@conf[nr]['test'] = ask_regexp if @conf[nr]['test'] == 'regexp'
 	end
+	def emptydel(nr,v)
+		if @conf[nr][v].empty?
+			@conf[nr].delete v
+			true
+		else
+			false
+		end
+	end
 	def configure_useragent(nr)
 		puts "\nType an User-Agent identification string:"
 		@conf[nr]['client'] = readln
+		emptydel nr,'client'
 	end
 	def configure_referer(nr)
 		puts "\nType the suggested URL of the Referer[sic]:"
 		@conf[nr]['referer'] = readln
+		emptydel nr,'referer'
 	end
 	def configure_lang(nr)
 		puts "\nType your language code, e.g de, ca or en:"
 		@conf[nr]['lang'] = readln
+		emptydel nr,'lang'
 	end
 	def configure_range(nr)
 		# This option only makes sense when using the DIFF method
@@ -377,10 +402,12 @@ Type a range. Examples:
 			@conf[nr]['range'] = readln('> ')
 		end until (@conf[nr]['range'] =~ /^\d*-\d*$/) or
 		           @conf[nr]['range'].empty?
+		emptydel nr,'range'
 	end
 	def configure_timeout(nr)
 		puts "\nConnection timeout in seconds:"
 		@conf[nr]['timeout'] = readln
+		emptydel nr,'timeout'
 	end
 	def configure_proxy(nr)
 		puts "\nWhat is host and port of your HTTP proxy? Format: host:port"
@@ -388,6 +415,80 @@ Type a range. Examples:
 		@conf[nr]['proxy'] = readln('http://')
 		end until (@conf[nr]['proxy'] =~ /^[\w\.-]+:\d+$/) or
 		           @conf[nr]['proxy'].empty?
+		emptydel nr,'proxy'
+	end
+	def configure_htmlcmd(nr)
+		puts <<-EOH
+Please type a shell command to use a HTML dumping tool.
+Or type nothing to use the #{ProgName}-internal tag ignorer.
+Examples:
+	> lynx -dump      <-  they
+	> links2 -dump    <-     work
+	> w3m -dump       <-       all
+	> html2text       <-         well ;-)
+	> cat         ;-) <- Here, use the `diff' method instead.
+
+		EOH
+		@conf[nr]['htmlcmd'] = readln('> ')
+		return if emptydel nr,'htmlcmd'
+		puts <<-EOH
+Fine, I am doing a test now. I'll generate a simple HTML page and 
+start the command you just entered. The output will be shown here.
+If you see that something went wrong, you should reenter this 
+configuration part!                            Ready? Press a key.
+		EOH
+		data = <<-EOD
+<HTML><head><TiTLe>#{ProgName} dump test</title></head>
+<body>
+
+<h1>A dump test</h1>
+
+<blockquote><tt>f</tt><i>o</i><b>o</b>&nbsp;&quot;<s>b</s><u>a</u><sup>r</sub></blockquote>
+
+<p align="center">Centered text.</p>
+<center>Again.</p></center>
+
+<table>
+ <thead><tr><th>A</th><th>O</th><th>U</th>
+  <th rowspan="4">a simple test of a table</th></tr></thead>
+ <tfoot><tr><td colspan="3">German Umlauts</td></tfoot>
+ <tbody>
+  <tr><td>&Auml;</td><td>&Ouml;</td><td>&Uuml;</td></tr>
+  <tr><td>&auml;</td><td>&ouml;</td><td>&uuml;</td></tr>
+</tbody></table>
+
+<p align="justify"">Lorem ipsum dolor sit amet, consectetur adipisici elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum.</p>
+<p align="right">&copy; someone</p>
+</body></html>
+		EOD
+		readln
+		File.open($workdir+'temp.html', 'w') do |f| f.write data end
+		puts '-- -- -- -- -- -- --'
+		print `#{@conf[nr]['htmlcmd']} #{$workdir}temp.html`
+		puts '-- -- -- -- -- -- --'
+		readln
+	end
+	def show(nr,v)
+		if @conf[nr][v].nil?
+			if @conf[0][v].nil?
+				'[not set]'
+			elsif nr.zero?
+				@conf[0][v].to_s
+			else
+				"#{@conf[0][v]} [global]"
+			end
+		else
+			@conf[nr][v].to_s
+		end
+	end
+	def testmeth(nr)
+		if not @conf[nr]['test'].nil?
+			@conf[nr]['test']
+		elsif not @conf[0]['test'].nil?
+			@conf[0]['test']
+		else
+			DefaultTest
+		end
 	end
 	def configure_urlmenu(nr)
 		loop do
@@ -397,22 +498,34 @@ Type a range. Examples:
 				puts "  [ ]\tGlobal"
 			else
 				possible=['u']
-				puts "  [u]\tURL: #{@conf[nr]['url']}"
+				puts "  [u]\tURL: #{show(nr,'url')}"
 			end
-			puts "  [m]\tTest method: #{@conf[nr]['test']}"
+			puts "  [m]\tTest method: #{testmeth nr}"
 			puts
-			puts "  [a]\tUser-Agent: #{@conf[nr]['client']}"
-			puts "  [r]\tReferer: #{@conf[nr]['referer']}"
-			puts "  [l]\tAccept-Language: #{@conf[nr]['lang']}"
-			puts "  [b]\tRange: #{@conf[nr]['range']}"
-			puts "  [t]\tTimeout: #{@conf[nr]['timeout']}"
-			puts "  [p]\tProxy: #{@conf[nr]['proxy']}"
+			puts "  [a]\tUser-Agent: #{show(nr,'client')}"
+			puts "  [r]\tReferer: #{show(nr,'referer')}"
+			puts "  [l]\tAccept-Language: #{show(nr,'lang')}"
+			puts "  [b]\tRange: #{show(nr,'range')}"
+			puts "  [t]\tTimeout: #{show(nr,'timeout')}"
+			puts "  [p]\tProxy: #{show(nr,'proxy')}"
 			possible += ['m', 'a', 'r', 'l', 'b', 't', 'p']
-			if ['html','diff'].member?(@conf[nr]['test']) and nr != 0
-				puts "  [s]\tStart regexp: #{@conf[nr]['start']}"
-				puts "  [e]\tEnd regexp: #{@conf[nr]['end']}"
-				possible += ['s', 'e']
+			if testmeth(nr) == 'html'
+				puts "  [h]\tCommand HTML dumper: #{show(nr,'htmlcmd')}"
+				possible << 'h'
+			else
+				puts "  [ ]\tCommand HTML dumper: [only available w/ html]"
 			end
+			if nr != 0
+				if ['html','diff'].member?(testmeth(nr))
+					puts "  [s]\tStart regexp: #{show(nr,'start')}"
+					puts "  [e]\tEnd regexp: #{show(nr,'end')}"
+					possible += ['s', 'e']
+				else
+					puts "  [ ]\tStart regexp: [only avail w/ diff or html]"
+					puts "  [ ]\tEnd regexp: [only avail w/ diff or html]"
+				end
+			end
+
 			puts
 
 			if nr > 0
@@ -430,6 +543,7 @@ Type a range. Examples:
 			when 'b' then configure_range(nr)
 			when 't' then configure_timeout(nr)
 			when 'p' then configure_proxy(nr)
+			when 'h' then configure_htmlcmd(nr)
 			when 's' then @conf[nr]['start'] = ask_regexp
 			when 'e' then @conf[nr]['end'] = ask_regexp
 			when 'd'
@@ -443,33 +557,16 @@ end
 
 class Main
 	def initialize
-		@config = Config.new
+		@config = Config.new 
 		@store = Store.new
 		cleanup
-	end
-
-	def getconf(e, key)
-		# return e[key]'s value
-		# if not set return global value
-		# if not set return default value or nil
-		if not e[key].nil?
-			e[key]
-		elsif @config[key].nil?
-			case key
-				when 'test' then DefaultTest
-				when 'timeout' then DefaultTimeout
-				else nil
-			end
-		else
-			@config[key]
-		end
 	end
 
 	def cleanup
 		@store.each do |key|
 			verify = false
 			@config.each do |e|
-				verify = true if key == name(getconf(e, 'test'), e['url'], getconf(e,'range'))
+				verify = true if key == name(e['test'], e['url'], e['range'])
 			end
 			unless verify
 				@store.delete(key)
@@ -725,16 +822,75 @@ module Diff
 	end
 end
 
+module XXX  # how to name that? ;-)
+	# simple regular <.*> matcher and remover.
+	# Could fail on nested <tags>, on wrong HTML and on Javascript.
+	def XXX.tagstrip(str)
+		str.gsub(/([\r\n]|<[^<>]*>)+/,"\n").gsub(/[ \t]+/,' ').gsub(/([\r\n][ \t]+)+[\r\n]?/, "\n")
+	end
+
+	# cuts out string between first match to "starts" (a regexp string or 
+	# nil) and last match to "ends" (regexp string or nil)
+	def XXX.cutout(starts, ends, str)
+		unless starts.nil?
+			begin
+				match = str.match(str_to_re(starts))
+			rescue SyntaxError
+				$log.puts "Error on parsing start regex \"#{starts}\"."
+				$log.puts $!
+				raise
+			end
+			match = str.match(str_to_re(starts))
+			str = str[match.begin(0)..-1] unless match.nil?
+		end
+		unless ends.nil?
+			pos = 0
+			begin
+				begin
+					match = str[pos..-1].match(str_to_re(ends))
+				rescue SyntaxError
+					$log.puts "Error on parsing end regex \"#{ends}\"."
+					$log.puts $!
+					raise
+				end
+				match = str[pos..-1].match(str_to_re(ends))
+				pos += match.end(0) unless match.nil?
+			end until match.nil?
+			str = str[0..pos-1]
+		end
+		str += "\n" unless [?\n,?\r].member?(str[-1])
+		str
+	end
+
+	def XXX.process_html(data,e)
+		s = e['htmlcmd']
+		if s.nil?
+			tagstrip(data)
+		else
+			File.open($workdir+'temp.html', 'w') do |f| f.write data end
+			`#{s} #{$workdir}temp.html` # or replace %s? We don't need it, eh?
+		end
+	end
+end
+
 class MainDiff < Main
 	def initialize
 		super
 		@config.each do |e|
-			method = getconf(e, 'test')
-			next unless ['diff','html'].member?(method)
-			key = name(method, e['url'], getconf(e, 'range'))
+			method = e['test']
+			next unless ['diff','html'].member?(method) ## will we change this and generate pseudo-diffs?
+			key = name(method, e['url'], e['range'])
 			list = @store[key]
 			next if list.nil?
+
+			list[0] = XXX.cutout(e['start'],e['end'], list[0])
+			list[1] = XXX.cutout(e['start'],e['end'], list[1])
 			next if list[0] == list[1]
+
+			list[0] = XXX.process_html(list[0],e) if method == 'html'
+			list[1] = XXX.process_html(list[1],e) if method == 'html'
+			next if list[0] == list[1]
+
 			puts '--- '+e['url']
 			puts '+++ '+e['url']
 			file1, file2 = [], []
@@ -751,22 +907,15 @@ class MainReset < Main
 	def initialize
 		super
 		@config.each do |e|
-			method = getconf(e, 'test')
+			method = e['test']
 			next unless ['diff','html'].member?(method)
-			key = name(method, e['url'], getconf(e, 'range'))
+			key = name(method, e['url'], e['range'])
 			list = @store[key]
 			next if list.nil?
 			next if list[0] == list[1]
 			list[0] = list[1]
 			@store[key] = list
 		end
-	end
-end
-
-class MainConfigure < Main
-	def initialize
-		super
-		@config.configure true
 	end
 end
 
@@ -798,69 +947,30 @@ class MainGet < Main
 		else
 			if @store[key][1] != value
 				@store[key] = [@store[key][1], value]
-				yield
+				yield @store[key][0], @store[key][1]
 				$log.puts "#{key} - changed"
 			end
 		end
-	end
-
-	# simple regular <.*> matcher and remover.
-	# Could fail on nested <tags>, on wrong HTML and on Javascript.
-	def tagstrip(str)
-		str.gsub(/([\r\n]|<[^<>]*>)+/,"\n").gsub(/[ \t]+/,' ').gsub(/([\r\n][ \t]+)+[\r\n]?/, "\n")
-	end
-
-	# cuts out string between first match to "starts" (a regexp string or 
-	# nil) and last match to "ends" (regexp string or nil)
-	def cutout(starts, ends, str)
-		unless starts.nil?
-			begin
-				match = str.match(str_to_re(starts))
-			rescue SyntaxError
-				$log.puts "Error on parsing start regex \"#{starts}\"."
-				$log.puts $!
-				raise
-			end
-			match = str.match(str_to_re(starts))
-			str = str[match.begin(0)..-1] unless match.nil?
-		end
-		unless ends.nil?
-			pos = 0
-			begin
-				begin
-					match = str[pos..-1].match(str_to_re(ends))
-				rescue SyntaxError
-					$log.puts "Error on parsing end regex \"#{ends}\"."
-					$log.puts $!
-					raise
-				end
-				match = str[pos..-1].match(str_to_re(ends))
-				pos += match.end(0) unless match.nil?
-			end until match.nil?
-			str = str[0..pos-1]
-		end
-		str += "\n" unless [?\n,?\r].member?(str[-1])
-		str
 	end
 
 	def fetchurls
 		@config.each do |e|
 			begin
 				url = URI.parse(e['url'])
-				todo = proc { puts url }
+				doit = proc { puts url }
 				header = {}
-				header['User-Agent'] = getconf(e, 'client') unless getconf(e, 'client').nil?
-				header['Referer'] = getconf(e, 'referer') unless getconf(e, 'referer').nil?
-				header['Accept-Language'] = getconf(e, 'lang') unless getconf(e, 'lang').nil?
-				header['Range'] = 'bytes='+getconf(e, 'range') unless getconf(e, 'range').nil?
+				header['User-Agent'] = e['client'] unless e['client'].nil?
+				header['Referer'] = e['referer'] unless e['referer'].nil?
+				header['Accept-Language'] = e['lang'] unless e['lang'].nil?
+				header['Range'] = 'bytes=' + e['range'] unless e['range'].nil?
 				header['Authorization'] ='Basic '+[url.userinfo].pack('m') unless url.userinfo.to_s.empty?
 				header['Connection'] = 'close' # default
 				header['Cache-Control'] = 'no-cache' # Thanks to Alexander Logvinov!
 				header['Pragma'] = 'no-cache' # this, too
-				proxy, proxyport = getconf(e, 'proxy').split(/:/) unless getconf(e, 'proxy').nil?
+				proxy, proxyport = e['proxy'].split(/:/) unless e['proxy'].nil?
 				proxyport = proxyport.to_i unless proxyport.nil?
-				timeout = getconf(e, 'timeout')
-				method = getconf(e, 'test')
+				timeout = e['timeout']
+				method = e['test']
 				path = '/'
 				path = url.path unless url.path.to_s.empty?
 				path << '?'+url.query unless url.query.to_s.empty?
@@ -873,30 +983,32 @@ class MainGet < Main
 						resp = conn.head(path, header) # only need header (HEAD request)
 						case method
 						when 'size'
-							updatedata(name(method,e['url']), resp['Content-Length'], &todo)
+							updatedata(name(method,e['url']), resp['Content-Length'], &doit)
 						when 'md5sum'
-							updatedata(name(method,e['url']), resp['Content-MD5'], &todo)
+							updatedata(name(method,e['url']), resp['Content-MD5'], &doit)
 						when 'date'
-							updatedata(name(method,e['url']), resp['Last-Modified'], &todo)
+							updatedata(name(method,e['url']), resp['Last-Modified'], &doit)
 						end
 					else
 						resp = conn.get(path, header) # get body (GET request)
-						if method == 'diff'
+						if method == 'diff' or method == 'html'
 							begin
-								diffdata(name(method, e['url'], getconf(e, 'range')), cutout(e['start'],e['end'], resp.body), &todo)
+								diffdata(name(method, e['url'], e['range']), resp.body) do |old,new|
+									old = XXX.cutout(e['start'],e['end'], old)
+									new = XXX.cutout(e['start'],e['end'], new)
+									if method == 'html'
+										old = XXX.process_html(old,e)
+										new = XXX.process_html(new,e)
+									end
+									doit.call if old != new
+								end
 							rescue SyntaxError
 								$errors += 1
 							end
-						elsif method == 'html'
-							begin
-								diffdata(name(method, e['url'], getconf(e, 'range')), tagstrip(cutout(e['start'],e['end'], resp.body)), &todo)
-							rescue SyntaxError
-								$errors += 1
-							end
-						else
+						else # a regexp
 							begin
 								if resp.body =~ str_to_re(method)
-									todo.call
+									doit.call
 								end
 							rescue SyntaxError
 								$log.puts "Error on parsing regex \"#{method}\"."
@@ -906,7 +1018,7 @@ class MainGet < Main
 						end
 					end
 				end
-			rescue	SocketError, Timeout::Error, URI::InvalidURIError, Net::ProtocolError, Net::HTTPBadResponse, Net::HTTPHeaderSyntaxError
+			rescue	SocketError, Timeout::Error, URI::InvalidURIError, EOFError, Errno::ECONNREFUSED, Net::ProtocolError, Net::HTTPBadResponse, Net::HTTPHeaderSyntaxError
 			# should we just rescue StandardError?
 				$log.puts e['url']+': '+$!
 				$errors += 1
@@ -915,10 +1027,16 @@ class MainGet < Main
 	end
 end
 
+class Configure
+	def initialize
+		@config = Config.new false
+		@config.configure
+	end
+end
 
 ### This is int main(...) ;-)
 
-command = getcmd(options) # options is a function with side effects
+command = getcmd(Options.init) # Options.init is a function with side effects
 
 Dir.mkdir($workdir) unless File.exist?($workdir)
 $log = File.new($workdir+'lastlog', 'w')
@@ -929,7 +1047,7 @@ END {
 # commands
 case command
 when 'configure'
-	MainConfigure.new
+	Configure.new
 when 'diff'
 	MainDiff.new
 when 'help'
