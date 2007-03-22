@@ -1,6 +1,6 @@
-webdiff (20070302-1) unstable; urgency=low
+netstiff (20070322-1) unstable; urgency=low
 
   * Initial release (Closes: #413124)
 
- -- Stephan Beyer <s-beyer@gmx.net>  Fri,  2 Mar 2007 16:04:23 +0100
+ -- Stephan Beyer <s-beyer@gmx.net>  Thu, 22 Mar 2007 16:22:47 +0100
 
