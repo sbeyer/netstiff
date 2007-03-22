@@ -1,0 +1,1071 @@
+#!/usr/bin/ruby
+# netstiff (formerly known as webdiff)
+# (C) 2004,2007, Stephan Beyer, GNU GPL
+#
+# requirements:
+#	* ruby standard distribution (net::http, uri, pstore)
+#	  http://www.ruby-lang.org (at least version 1.8)
+# recommended:
+#	* GNU readline for ruby (for interactive configuration)
+# wishlist/todo?
+#	* ftp?
+#	* a get-and-diff-at-once ("fastcheck"/"fetchdiff") command [requested]
+#	* an option (-S or -L) to show lastlog on stderr
+# Please tell me if you find any bugs: Stephan Beyer <s-beyer@gmx.net>
+# You may also tell me your thoughts/ideas/opinion about this tool.
+
+ProgName = 'netstiff'
+ProgVersion = '20070322'
+DefaultTimeout = 20
+DefaultTest = 'diff'
+DefaultContext = 3
+$workdir = ENV['HOME']+'/.'+ProgName+'/'
+
+$errors = 0
+
+def showversion
+	puts "#{ProgName} #{ProgVersion}\t\t(C) 2004, 2007 Stephan Beyer, GNU GPL"
+end
+def showusage
+	puts <<-EOU
+
+Usage:	#{$0} [options] [command]
+
+Command can be one of:
+	configure	configure #{ProgName}
+	diff		show the current differences
+	get		fetch data from URIs and show changed ones
+	help		show this help
+	reset		reset current differences
+	version		show current version
+
+`get' is used, if command is omitted. Commands may be shortened down to one
+character (e.g. `c' instead of `configure'). Leading dashes are ignored.
+Without configuration, some commands will act like `configure'.
+
+Options:
+	--workdir DIR, -W DIR	specify working directory
+	                       	[#{$workdir}]
+
+See the manual page `man 1 #{ProgName}'.
+
+Have fun!
+		EOU
+end
+
+def getcmd(c)
+	c = c[1..-1] while c[0] == ?-
+	command=['configure','diff','help','reset','version','get']
+
+	(c.length-1).downto(0) do |i|
+		command.delete_if do |x| c[i] != x[i] end
+		break if command.empty?
+	end
+	Options.err "Could not recognize command." if command.length != 1
+	command.pop
+end
+
+def name(test, url, suffix=nil)
+	if suffix.nil?
+		test+'::'+url
+	else
+		test+'::'+url+'::'+suffix
+	end
+end
+
+$gnu =	begin
+	require 'readline'
+	true
+rescue LoadError
+	false
+end
+def readln(str = '')
+	if $gnu
+		Readline.readline(str, true)
+	else
+		print str
+		STDIN.gets.chomp
+	end
+end
+
+def str_to_re(str)
+	eval('%r'+str) ## FIXME this is eval^Wevil!
+# How can this be fixed?
+# See this #ruby-lang log:
+# <apeiros> try yaml.
+# <apeiros> {:regex1 => /foo/i, :regex2 => /bar/u}.to_yaml # => "--- 
+#           \n:regex2: !ruby/regexp /bar/u\n:regex1: !ruby/regexp /foo/i\n"
+# <apeiros> regexen are slightly uncomfortable, but most stuff is human readable 1:1
+# <sbeyer> apeiros, ok, thank you, it's noticed. And is there a way if I don't want 
+#          to change the format? ;-)
+# <apeiros> the obvious: eval or split the expression and use Regexp.new
+end
+
+module Options
+	def Options.err(s)
+		STDERR.puts "Error: #{s}\nAborting. See `#{$0} -h' for help."
+		exit 1
+	end
+	def Options.handle(opt,x,a)
+		case opt
+		when :W
+			$workdir = x
+			$workdir += '/' if $workdir[-1] != ?/
+		end
+	end
+	def Options.init
+		args = 0
+		opt = nil
+		ARGV[0..-2].each do |z|
+			if args.zero?
+				case z
+				when '--workdir', '-W'
+					opt = :W
+					args = 1
+				else
+					err("Unknown option: #{z}")
+				end
+			else
+				handle(opt,z,args)
+				args -= 1
+			end
+		end
+		if args > 1
+			err("Too many arguments to option -#{opt} given.")
+			exit 1
+		elsif args == 1
+			handle(opt,ARGV.last,args)
+			'g'
+		elsif ARGV.length == 0
+			'g'
+		else
+			ARGV.last
+		end
+	end
+end
+
+class Store
+	require 'pstore'
+	def initialize
+		@db = PStore.new($workdir+'store')
+	end
+	def each
+		@db.transaction do
+			@db.roots.each do |*args|
+				yield(*args)
+			end
+		end
+	end
+	def [](key)
+		@db.transaction(true) do @db[key] end
+	end
+	def []=(key,value)
+		@db.transaction do @db[key]=value end
+	end
+	def delete(key)
+		@db.delete(key)
+	end
+end
+
+class Config
+	def initialize(use=true)
+		@conf = [{}]
+		begin
+			readconfigfile use
+		rescue SystemCallError
+			$log.puts($!)
+			$log.puts('configuring')
+			configure
+			exit
+		end
+	end
+	def each(&block)
+		@conf.each(&block)
+	end
+	def [](key)
+		@conf[key]
+	end
+
+	def readconfigfile use
+		i = 0
+		File.open($workdir+'config', 'r') do |conffile|
+			conffile.each_line do |line|
+				line.strip!
+				if line =~ /^#/ or line.empty?
+					next
+				elsif line =~ /^\+/
+					k, v = line[1..-1].strip.split(/\s+/, 2)
+					@conf[i].merge!({k=>v})
+				else
+					i += 1
+					@conf << {'url'=>(line=~%r(^https?://) ? '':'http://')+line}
+				end
+			end
+		end
+
+		if use
+			glob = @conf.shift
+
+			# Default values overwritten?
+			glob['test'] = DefaultTest if glob['test'].nil?
+			glob['timeout'] = DefaultTimeout if glob['timeout'].nil?
+
+			# Now set variables in every URI, if not set
+			glob.each do |gvar,gval|
+				next if gval.nil?
+				@conf.each_with_index do |e,i|
+					e[gvar] = gval if e[gvar].nil?
+				end
+			end
+		end
+	end
+
+	def configure
+		showversion
+		print <<-EOD
+
+This is the #{ProgName} #{ProgVersion} interactive configuration tool.
+#{ProgName} uses a simple human-readable configuration file
+	#{$workdir+'config'}
+but you can always use this tool by executing `#{$0} -c' 
+on the command line.
+		EOD
+		if configure_mainmenu # save config
+			File.open($workdir+'config', 'w') do |out|
+				out.print <<-EOH
+# #{ProgName} configuration file, type `#{ProgName} -c' to configure
+# Format:
+# # comment
+# + <globalvariable> <globalvalue>
+# + ...
+# <url1>
+# + <variable> <value-for-url1>
+# + ...
+# <url2>
+# ...
+#
+# variables are: client, lang, proxy, referer, test, timeout, range
+# <test> can be html, diff, size, date, md5sum or a /regexp/
+# diff is the default. The proxy value must be in the format <host>:<port>
+# 
+# 'diff'/'html' test modes have two extra variables:
+# start /start regex/		and		end /end regex/	
+# These two are nice for dynamic web pages with a more interesting static 
+# part. Set start and end regex, and then #{ProgName} only diffs the content
+# between the first 'start' and the last 'end' match, and not a change 
+# like "xx users online" or a random (fortune) server signature.
+# 
+# 'html' has a further extra variable: htmlcmd <command to htmldumper>
+# e.g. " + htmlcmd lynx -dump" or " + htmlcmd html2text"
+# 
+# All variable settings are optional.
+# Have fun! sbeyer
+				EOH
+				@conf.each do |e|
+					out.puts "\n"+e['url'] unless e['url'].nil?
+					out.puts "  + test\t"+e['test'] unless e['test'].nil?
+					out.puts "  + client\t"+e['client'] unless e['client'].nil?
+					out.puts "  + referer\t"+e['referer'] unless e['referer'].nil?
+					out.puts "  + lang\t"+e['lang'] unless e['lang'].nil?
+					out.puts "  + range\t"+e['range'] unless e['range'].nil?
+					out.puts "  + timeout\t"+e['timeout'] unless e['timeout'].nil?
+					out.puts "  + proxy\t"+e['proxy'] unless e['proxy'].nil?
+					out.puts "  + htmlcmd\t"+e['htmlcmd'] if e['test']=='html' and not e['htmlcmd'].nil?
+					if ['html','diff'].member?(e['test'])
+						out.puts "  + start\t"+e['start'] unless e['start'].nil?
+						out.puts "  + end \t"+e['end'] unless e['end'].nil?
+					end
+				end
+			end
+		end
+	end
+	def configure_mainmenu
+		loop do
+			puts "\n\n"
+			possible = ['n', 'f', 'x']
+			@conf.each_with_index do |e, c|
+				print "  [#{c}]\t"
+				possible << c.to_s
+				if c == 0
+					puts 'Global settings'
+				else
+					puts e['url']+' specific settings'
+				end
+			end
+			puts "  [n]\tAdd new URL"
+			puts
+			puts "  [f]\tFinished (exit & save)"
+			puts "  [x]\tExit without saving"
+			case (c = choose(possible))
+			when 'f'
+				return true
+			when 'x'
+				return false
+			when 'n'
+				nr = @conf.length
+				configure_url(nr)
+				configure_testmethod(nr)
+			else
+				configure_urlmenu(c.to_i)
+			end
+		end
+	end
+
+	def choose(possible)
+		puts
+		choice = readln("  Your choice [#{possible.join('/')}]: ") until possible.member?(choice)
+		puts "\n"
+		choice
+	end
+
+	def ask_regexp
+		puts "\n"+'Please type the regexp, e.g. /[Hh]ugo\s+wrote/ ...'
+		begin
+			re = readln
+			str_to_re(re)
+		rescue SyntaxError
+			puts 'Incorrect regular expression! Try again:'
+			retry
+		end
+		re
+	end
+
+	def configure_url(nr)
+		puts "\nPlease type the correct URI of the web page you want to check for updates:"
+		if @conf[nr].nil?
+			@conf[nr] = {'url'=>readln('> ')}
+		else
+			@conf[nr]['url'] = readln('> ')
+		end
+	end
+	def configure_testmethod(nr)
+		puts <<-EOD
+
+Choose the TEST METHOD, the way of looking for changes. Type:
+	diff	This method downloads the whole file and saves the two 
+		last versions. Use the -d option to take a look at a diff 
+		of these versions.
+	html	This method acts like 'diff', but ignores text between
+		'<' and '>' on diffing. (Those usually denote HTML tags.)
+	size	This method downloads the HTTP header to check if the file
+		size changes. The server should response the Content-Length
+		header entity. (works in most cases)
+	date	This method downloads the HTTP header to check when the file
+		was last modified. This behaviour can cause problems when
+		fetching some dynamic web sites. The server should response
+		the Last-Modified header entity. (works in most cases)
+	md5sum	This method downloads the HTTP header to check if the MD5 sum
+		changes. The server should response the Content-MD5 header
+		entity to make this method work.
+	regexp	This method downloads the whole file and checks if a given
+		regexp matches. Nothing is stored locally.
+		EOD
+		@conf[nr]['test'] = choose(['diff','html','size','date','md5sum','regexp'])
+		@conf[nr]['test'] = ask_regexp if @conf[nr]['test'] == 'regexp'
+	end
+	def emptydel(nr,v)
+		if @conf[nr][v].empty?
+			@conf[nr].delete v
+			true
+		else
+			false
+		end
+	end
+	def configure_useragent(nr)
+		puts "\nType an User-Agent identification string:"
+		@conf[nr]['client'] = readln
+		emptydel nr,'client'
+	end
+	def configure_referer(nr)
+		puts "\nType the suggested URL of the Referer[sic]:"
+		@conf[nr]['referer'] = readln
+		emptydel nr,'referer'
+	end
+	def configure_lang(nr)
+		puts "\nType your language code, e.g de, ca or en:"
+		@conf[nr]['lang'] = readln
+		emptydel nr,'lang'
+	end
+	def configure_range(nr)
+		# This option only makes sense when using the DIFF method
+		puts
+		puts 'Note: You should NOT use this option globally.' if nr==0
+		puts 'Not all HTTP servers support this feature.'
+		puts <<-EOH
+Type a range. Examples:
+	 0-99	= get the first 100 bytes (byte 0 to byte 99)
+	  -99	= get the last 99 bytes
+	99-99	= get the 99th byte
+	99-	= get all bytes, beginning with the 99th
+	65-923	= get bytes 65 to 923
+		EOH
+		begin
+			@conf[nr]['range'] = readln('> ')
+		end until (@conf[nr]['range'] =~ /^\d*-\d*$/) or
+		           @conf[nr]['range'].empty?
+		emptydel nr,'range'
+	end
+	def configure_timeout(nr)
+		puts "\nConnection timeout in seconds:"
+		@conf[nr]['timeout'] = readln
+		emptydel nr,'timeout'
+	end
+	def configure_proxy(nr)
+		puts "\nWhat is host and port of your HTTP proxy? Format: host:port"
+		begin
+		@conf[nr]['proxy'] = readln('http://')
+		end until (@conf[nr]['proxy'] =~ /^[\w\.-]+:\d+$/) or
+		           @conf[nr]['proxy'].empty?
+		emptydel nr,'proxy'
+	end
+	def configure_htmlcmd(nr)
+		puts <<-EOH
+Please type a shell command to use a HTML dumping tool.
+Or type nothing to use the #{ProgName}-internal tag ignorer.
+Examples:
+	> lynx -dump      <-  they
+	> links2 -dump    <-     work
+	> w3m -dump       <-       all
+	> html2text       <-         well ;-)
+	> cat         ;-) <- Here, use the `diff' method instead.
+
+		EOH
+		@conf[nr]['htmlcmd'] = readln('> ')
+		return if emptydel nr,'htmlcmd'
+		puts <<-EOH
+Fine, I am doing a test now. I'll generate a simple HTML page and 
+start the command you just entered. The output will be shown here.
+If you see that something went wrong, you should reenter this 
+configuration part!                            Ready? Press a key.
+		EOH
+		data = <<-EOD
+<HTML><head><TiTLe>#{ProgName} dump test</title></head>
+<body>
+
+<h1>A dump test</h1>
+
+<blockquote><tt>f</tt><i>o</i><b>o</b>&nbsp;&quot;<s>b</s><u>a</u><sup>r</sub></blockquote>
+
+<p align="center">Centered text.</p>
+<center>Again.</p></center>
+
+<table>
+ <thead><tr><th>A</th><th>O</th><th>U</th>
+  <th rowspan="4">a simple test of a table</th></tr></thead>
+ <tfoot><tr><td colspan="3">German Umlauts</td></tfoot>
+ <tbody>
+  <tr><td>&Auml;</td><td>&Ouml;</td><td>&Uuml;</td></tr>
+  <tr><td>&auml;</td><td>&ouml;</td><td>&uuml;</td></tr>
+</tbody></table>
+
+<p align="justify"">Lorem ipsum dolor sit amet, consectetur adipisici elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum.</p>
+<p align="right">&copy; someone</p>
+</body></html>
+		EOD
+		readln
+		File.open($workdir+'temp.html', 'w') do |f| f.write data end
+		puts '-- -- -- -- -- -- --'
+		print `#{@conf[nr]['htmlcmd']} #{$workdir}temp.html`
+		puts '-- -- -- -- -- -- --'
+		readln
+	end
+	def show(nr,v)
+		if @conf[nr][v].nil?
+			if @conf[0][v].nil?
+				'[not set]'
+			elsif nr.zero?
+				@conf[0][v].to_s
+			else
+				"#{@conf[0][v]} [global]"
+			end
+		else
+			@conf[nr][v].to_s
+		end
+	end
+	def testmeth(nr)
+		if not @conf[nr]['test'].nil?
+			@conf[nr]['test']
+		elsif not @conf[0]['test'].nil?
+			@conf[0]['test']
+		else
+			DefaultTest
+		end
+	end
+	def configure_urlmenu(nr)
+		loop do
+			puts "\n\n"
+			if nr == 0 then
+				possible=[]
+				puts "  [ ]\tGlobal"
+			else
+				possible=['u']
+				puts "  [u]\tURL: #{show(nr,'url')}"
+			end
+			puts "  [m]\tTest method: #{testmeth nr}"
+			puts
+			puts "  [a]\tUser-Agent: #{show(nr,'client')}"
+			puts "  [r]\tReferer: #{show(nr,'referer')}"
+			puts "  [l]\tAccept-Language: #{show(nr,'lang')}"
+			puts "  [b]\tRange: #{show(nr,'range')}"
+			puts "  [t]\tTimeout: #{show(nr,'timeout')}"
+			puts "  [p]\tProxy: #{show(nr,'proxy')}"
+			possible += ['m', 'a', 'r', 'l', 'b', 't', 'p']
+			if testmeth(nr) == 'html'
+				puts "  [h]\tCommand HTML dumper: #{show(nr,'htmlcmd')}"
+				possible << 'h'
+			else
+				puts "  [ ]\tCommand HTML dumper: [only available w/ html]"
+			end
+			if nr != 0
+				if ['html','diff'].member?(testmeth(nr))
+					puts "  [s]\tStart regexp: #{show(nr,'start')}"
+					puts "  [e]\tEnd regexp: #{show(nr,'end')}"
+					possible += ['s', 'e']
+				else
+					puts "  [ ]\tStart regexp: [only avail w/ diff or html]"
+					puts "  [ ]\tEnd regexp: [only avail w/ diff or html]"
+				end
+			end
+
+			puts
+
+			if nr > 0
+				puts "  [d]\tDelete URL from list."
+				possible << 'd'
+			end
+			puts "  [f]\tI have finished."
+			possible << 'f'
+			case (choice = choose(possible))
+			when 'u' then configure_url(nr)
+			when 'm' then configure_testmethod(nr)
+			when 'a' then configure_useragent(nr)
+			when 'r' then configure_referer(nr)
+			when 'l' then configure_lang(nr)
+			when 'b' then configure_range(nr)
+			when 't' then configure_timeout(nr)
+			when 'p' then configure_proxy(nr)
+			when 'h' then configure_htmlcmd(nr)
+			when 's' then @conf[nr]['start'] = ask_regexp
+			when 'e' then @conf[nr]['end'] = ask_regexp
+			when 'd'
+				@conf.delete_at(nr)
+				return
+			when 'f' then return
+			end
+		end
+	end
+end
+
+class Main
+	def initialize
+		@config = Config.new 
+		@store = Store.new
+		cleanup
+	end
+
+	def cleanup
+		@store.each do |key|
+			verify = false
+			@config.each do |e|
+				verify = true if key == name(e['test'], e['url'], e['range'])
+			end
+			unless verify
+				@store.delete(key)
+				$log.puts "deleted stored `#{key}' data"
+			end
+		end
+	end
+end
+
+# the following module code has been taken from:
+# 	libalgorithm-diff-ruby version 0.4
+# and has been changed.
+# 
+# Original copyright notice:
+# # algorithm/diff - a Ruby module to compute difference sets between two
+# # objects. Copyright (c) 2001-2002 Lars Christensen.
+# #
+# #  This program is free software; you can redistribute it and/or modify
+# # it under the terms of the GNU General Public License as published by
+# # the Free Software Foundation; either version 2 of the License, or
+# # (at your option) any later version.
+# #
+# # This program is distributed in the hope that it will be useful, but
+# # WITHOUT ANY WARRANTY; without even the implied warranty of
+# # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+# # General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program; if not, write to the Free Software Foundation, 
+# Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+module Diff
+	attr_reader :diffs
+
+	# Change notes:
+	# The mix-in module Diffable has been removed.
+	# The functions reverse_hash and replacenextlarger have been put here.
+	# The lcs function has just been copied, reindented and reverse_hash / 
+	# replacenextlarger changes have been applied.
+	# makediff has been altered to yield both indices and no string. (This is not
+	# really needed, but more `natural' in my opinion.)
+	# diff has been rewritten to produce a imho `nicer' output.
+	# groupwise and unified have been completely written by me (sbeyer) and are
+	# not part of the original libalgorithm-diff-ruby package.
+	
+	# Create a hash that maps elements of the array to arrays of indices
+	# where the elements are found.
+	def Diff.reverse_hash(obj, range = (0...obj.length))
+		revmap = {}
+		range.each do |i|
+			elem = obj[i]
+			if revmap.has_key? elem
+				revmap[elem].push i
+			else
+				revmap[elem] = [i]
+			end
+		end
+		revmap
+	end
+	
+	# Replace the first element of obj which is larger than value. Assumes that
+	# the element indexed by high, if given is larger than value.
+	def Diff.replacenextlarger(obj, value, high = nil)
+		high ||= obj.length
+		low = 0
+		index = found = nil
+		while low < high
+			index = (high+low) >> 1
+			found = obj[index]
+			if value > found		# this first, most common case
+				low = index + 1
+			elsif value == found
+				return nil
+			else
+				high = index
+			end
+		end
+		obj[low] = value
+		low
+	end
+
+	def Diff.lcs(a, b)
+		astart = 0
+		bstart = 0
+		afinish = a.length-1
+		bfinish = b.length-1
+		mvector = []
+
+		# First we prune off any common elements at the beginning
+		while (astart <= afinish && bstart <= afinish && a[astart] == b[bstart])
+			mvector[astart] = bstart
+			astart += 1
+			bstart += 1
+		end
+
+		# now the end
+		while (astart <= afinish && bstart <= bfinish && a[afinish] == b[bfinish])
+			mvector[afinish] = bfinish
+			afinish -= 1
+			bfinish -= 1
+		end
+
+		bmatches = reverse_hash(b, bstart..bfinish)
+		thresh = []
+		links = []
+
+		(astart..afinish).each do |aindex|
+			aelem = a[aindex]
+			next unless bmatches.has_key? aelem
+			k = nil
+			bmatches[aelem].reverse_each do |bindex|
+				if k && (thresh[k] > bindex) && (thresh[k-1] < bindex)
+					thresh[k] = bindex
+				else
+					k = replacenextlarger(thresh, bindex, k)
+				end
+				links[k] = [ k!=0 && links[k-1], aindex, bindex ] if k
+			end
+		end
+
+		if !thresh.empty?
+			link = links[thresh.length-1]
+			while link
+				mvector[link[1]] = link[2]
+				link = link[0]
+			end
+		end
+
+		return mvector
+	end
+
+	def Diff.makediff(a, b)
+		mvector = Diff.lcs(a, b)
+		ai = bi = 0
+		while ai < mvector.length
+			bline = mvector[ai]
+			if bline
+				while bi < bline
+					yield :+, ai, bi
+					bi += 1
+				end
+				bi += 1
+			else
+				yield :-, ai, bi
+			end
+			ai += 1
+		end
+		while ai < a.length
+			yield :-, ai, bi
+			ai += 1
+		end
+		while bi < b.length
+			yield :+, ai, bi
+			bi += 1
+		end
+		1
+	end
+
+	def Diff.diff(a, b, &block)
+		diffs = [[:info, a.length, b.length]] # dirty trick
+		block ||= proc do |action, li, ri|
+			diffs << [action, li, ri]
+		end
+		Diff.makediff(a, b, &block)
+		diffs
+	end
+
+	# group diff by context
+	def Diff.groupwise(diff, context)
+		(_,alen,blen) = diff.shift # dirty trick to get length information
+		groups = [] # array of groups
+
+		unless diff.empty?
+			g = [] # one group
+			low = 0
+			(el0,el1,el2) = diff.shift
+
+			begin
+				[low, el1-context].max.upto(el1-1) do |i|
+					g.push [:eq, i, i+el2-el1]
+				end
+				begin
+					g.push [el0,el1,el2]
+					low = el1
+					low += 1 if el0 == :-
+					
+					if diff.empty?
+						el1 = blen
+						low.upto([low+context,alen].min-1) do |i|
+							g.push [:eq, i, i+blen-alen]
+						end
+						break
+					else
+						(el0,el1,el2) = diff.shift
+						low.upto([el1,low+context].min-1) do |i|
+							g.push [:eq, i, i+el2-el1]
+						end
+					end
+				end while el1 - low <= context
+
+				if el1 - low <= 2*context and el1 != blen
+					low += 2 # didn't figure out why, but this
+					         # worked on all examples!
+					next
+				end
+
+				groups.push g
+				yield g
+				g = []
+			end until diff.empty?
+		end
+		groups
+	end
+
+	def Diff.unified(la,ra,context=3)
+		groupwise(diff(la,ra),context) do |g|
+			# count :- and :+
+			minus = g.find_all do |z| z[0]==:- end.length
+			plus = g.find_all do |z| z[0]==:+ end.length
+			equal = g.length - minus - plus
+			minus += equal
+			plus += equal
+
+			str = '@@ -'
+			if minus > 1
+				str << "#{g[0][1]+1},#{minus}"
+			elsif minus == 1
+				str << (g[0][1]+1).to_s
+			else # minus == 0
+				str << "#{g[0][1]},0"
+			end
+			str << ' +'
+			if plus > 1
+				str << "#{g[0][2]+1},#{plus}"
+			elsif plus == 1
+				str << (g[0][2]+1).to_s
+			else # plus == 0
+				str << "#{g[0][2]},0"
+			end
+			str << " @@\n"
+			yield str
+
+			g.each do |x|
+				if x[0] == :eq then
+					str = ' '+la[x[1]]
+				elsif x[0] == :- then
+					str = '-'+la[x[1]]
+				else
+					str = '+'+ra[x[2]]
+				end
+				yield str
+			end
+		end
+	end
+end
+
+module XXX  # how to name that? ;-)
+	# simple regular <.*> matcher and remover.
+	# Could fail on nested <tags>, on wrong HTML and on Javascript.
+	def XXX.tagstrip(str)
+		str.gsub(/([\r\n]|<[^<>]*>)+/,"\n").gsub(/[ \t]+/,' ').gsub(/([\r\n][ \t]+)+[\r\n]?/, "\n")
+	end
+
+	# cuts out string between first match to "starts" (a regexp string or 
+	# nil) and last match to "ends" (regexp string or nil)
+	def XXX.cutout(starts, ends, str)
+		unless starts.nil?
+			begin
+				match = str.match(str_to_re(starts))
+			rescue SyntaxError
+				$log.puts "Error on parsing start regex \"#{starts}\"."
+				$log.puts $!
+				raise
+			end
+			match = str.match(str_to_re(starts))
+			str = str[match.begin(0)..-1] unless match.nil?
+		end
+		unless ends.nil?
+			pos = 0
+			begin
+				begin
+					match = str[pos..-1].match(str_to_re(ends))
+				rescue SyntaxError
+					$log.puts "Error on parsing end regex \"#{ends}\"."
+					$log.puts $!
+					raise
+				end
+				match = str[pos..-1].match(str_to_re(ends))
+				pos += match.end(0) unless match.nil?
+			end until match.nil?
+			str = str[0..pos-1]
+		end
+		str += "\n" unless [?\n,?\r].member?(str[-1])
+		str
+	end
+
+	def XXX.process_html(data,e)
+		s = e['htmlcmd']
+		if s.nil?
+			tagstrip(data)
+		else
+			File.open($workdir+'temp.html', 'w') do |f| f.write data end
+			`#{s} #{$workdir}temp.html` # or replace %s? We don't need it, eh?
+		end
+	end
+end
+
+class MainDiff < Main
+	def initialize
+		super
+		@config.each do |e|
+			method = e['test']
+			next unless ['diff','html'].member?(method) ## will we change this and generate pseudo-diffs?
+			key = name(method, e['url'], e['range'])
+			list = @store[key]
+			next if list.nil?
+
+			list[0] = XXX.cutout(e['start'],e['end'], list[0])
+			list[1] = XXX.cutout(e['start'],e['end'], list[1])
+			next if list[0] == list[1]
+
+			list[0] = XXX.process_html(list[0],e) if method == 'html'
+			list[1] = XXX.process_html(list[1],e) if method == 'html'
+			next if list[0] == list[1]
+
+			puts '--- '+e['url']
+			puts '+++ '+e['url']
+			file1, file2 = [], []
+			list[0].each_line do |line| file1 << line end
+			list[1].each_line do |line| file2 << line end
+			Diff.unified(file1,file2,DefaultContext) do |str|
+				print str
+			end
+		end
+	end
+end
+
+class MainReset < Main
+	def initialize
+		super
+		@config.each do |e|
+			method = e['test']
+			next unless ['diff','html'].member?(method)
+			key = name(method, e['url'], e['range'])
+			list = @store[key]
+			next if list.nil?
+			next if list[0] == list[1]
+			list[0] = list[1]
+			@store[key] = list
+		end
+	end
+end
+
+class MainGet < Main
+	require 'net/http'
+	require 'uri'
+
+	def initialize
+		super
+		fetchurls
+	end
+
+	def updatedata(key, value)
+		if value.nil?
+			$log.puts "#{key} - not set! choose another test method!"
+			return
+		end
+		unless @store[key].nil? or value == @store[key]
+			yield
+			$log.puts "#{key} - changed"
+		end
+		@store[key] = value
+	end
+
+	def diffdata(key, value)
+		if @store[key].nil?
+			@store[key] = [value, value]
+			$log.puts "#{key} - set"
+		else
+			if @store[key][1] != value
+				@store[key] = [@store[key][1], value]
+				yield @store[key][0], @store[key][1]
+				$log.puts "#{key} - changed"
+			end
+		end
+	end
+
+	def fetchurls
+		@config.each do |e|
+			begin
+				url = URI.parse(e['url'])
+				doit = proc { puts url }
+				header = {}
+				header['User-Agent'] = e['client'] unless e['client'].nil?
+				header['Referer'] = e['referer'] unless e['referer'].nil?
+				header['Accept-Language'] = e['lang'] unless e['lang'].nil?
+				header['Range'] = 'bytes=' + e['range'] unless e['range'].nil?
+				header['Authorization'] ='Basic '+[url.userinfo].pack('m') unless url.userinfo.to_s.empty?
+				header['Connection'] = 'close' # default
+				header['Cache-Control'] = 'no-cache' # Thanks to Alexander Logvinov!
+				header['Pragma'] = 'no-cache' # this, too
+				proxy, proxyport = e['proxy'].split(/:/) unless e['proxy'].nil?
+				proxyport = proxyport.to_i unless proxyport.nil?
+				timeout = e['timeout']
+				method = e['test']
+				path = '/'
+				path = url.path unless url.path.to_s.empty?
+				path << '?'+url.query unless url.query.to_s.empty?
+
+				conn = Net::HTTP.new(url.host, url.port, proxy, proxyport) # you can add "proxyuser", "proxypass" strings for proxy auth
+				conn.open_timeout = timeout.to_i
+				conn.start do
+					resp = {}
+					if ['size','md5sum','date'].member?(method)
+						resp = conn.head(path, header) # only need header (HEAD request)
+						case method
+						when 'size'
+							updatedata(name(method,e['url']), resp['Content-Length'], &doit)
+						when 'md5sum'
+							updatedata(name(method,e['url']), resp['Content-MD5'], &doit)
+						when 'date'
+							updatedata(name(method,e['url']), resp['Last-Modified'], &doit)
+						end
+					else
+						resp = conn.get(path, header) # get body (GET request)
+						if method == 'diff' or method == 'html'
+							begin
+								diffdata(name(method, e['url'], e['range']), resp.body) do |old,new|
+									old = XXX.cutout(e['start'],e['end'], old)
+									new = XXX.cutout(e['start'],e['end'], new)
+									if method == 'html'
+										old = XXX.process_html(old,e)
+										new = XXX.process_html(new,e)
+									end
+									doit.call if old != new
+								end
+							rescue SyntaxError
+								$errors += 1
+							end
+						else # a regexp
+							begin
+								if resp.body =~ str_to_re(method)
+									doit.call
+								end
+							rescue SyntaxError
+								$log.puts "Error on parsing regex \"#{method}\"."
+								$log.puts $!
+								$errors += 1
+							end
+						end
+					end
+				end
+			rescue	SocketError, Timeout::Error, URI::InvalidURIError, EOFError, Errno::ECONNREFUSED, Net::ProtocolError, Net::HTTPBadResponse, Net::HTTPHeaderSyntaxError
+			# should we just rescue StandardError?
+				$log.puts e['url']+': '+$!
+				$errors += 1
+			end
+		end
+	end
+end
+
+class Configure
+	def initialize
+		@config = Config.new false
+		@config.configure
+	end
+end
+
+### This is int main(...) ;-)
+
+command = getcmd(Options.init) # Options.init is a function with side effects
+
+Dir.mkdir($workdir) unless File.exist?($workdir)
+$log = File.new($workdir+'lastlog', 'w')
+END {
+	$log.close
+}
+
+# commands
+case command
+when 'configure'
+	Configure.new
+when 'diff'
+	MainDiff.new
+when 'help'
+	showversion
+	showusage
+when 'reset'
+	MainReset.new
+when 'version'
+	showversion
+else
+	MainGet.new
+	#begin
+	#	MainGet.new
+	#rescue StandardError
+	#	$log.puts $!
+	#	$errors += 1
+	#end
+	### this is nicer, but ugly for bug reporting!
+end
+exit $errors
