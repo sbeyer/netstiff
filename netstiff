@@ -948,8 +948,8 @@ class MainGet < Main
 		else
 			if @store[key][1] != value
 				@store[key] = [@store[key][1], value]
-				yield @store[key][0], @store[key][1]
-				$log.puts "#{key} - changed"
+				$log.puts "#{key} - changed" if	yield @store[key][0], @store[key][1]
+
 			end
 		end
 	end
@@ -1001,7 +1001,12 @@ class MainGet < Main
 										old = XXX.process_html(old,e)
 										new = XXX.process_html(new,e)
 									end
-									doit.call if old != new
+									if old != new
+										doit.call
+										true
+									else
+										false
+									end
 								end
 							rescue SyntaxError
 								$errors += 1
