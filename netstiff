@@ -256,7 +256,7 @@ on the command line.
 # like "xx users online" or a random (fortune) server signature.
 # 
 # 'html' has a further extra variable: htmlcmd <command to htmldumper>
-# e.g. " + htmlcmd lynx -dump" or " + htmlcmd html2text"
+# e.g. " + htmlcmd lynx -nolist -dump" or " + htmlcmd html2text"
 # 
 # All variable settings are optional.
 # Have fun! sbeyer
@@ -423,10 +423,10 @@ Type a range. Examples:
 Please type a shell command to use a HTML dumping tool.
 Or type nothing to use the #{ProgName}-internal tag ignorer.
 Examples:
-	> lynx -dump      <-  they
-	> links2 -dump    <-     work
-	> w3m -dump       <-       all
-	> html2text       <-         well ;-)
+	> lynx -nolist -dump  <-  they
+	> links2 -dump        <-     work
+	> w3m -dump           <-       all
+	> html2text           <-         well ;-)
 	> cat         ;-) <- Here, use the `diff' method instead.
 
 		EOH
