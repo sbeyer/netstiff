@@ -281,6 +281,8 @@ on the command line.
 	end
 	def configure_mainmenu
 		loop do
+			cols = ENV['COLUMNS'].to_i
+			cols = 80 if cols < 40
 			puts "\n\n"
 			possible = ['n', 'f', 'x']
 			@conf.each_with_index do |e, c|
@@ -289,7 +291,13 @@ on the command line.
 				if c == 0
 					puts 'Global settings'
 				else
-					puts e['url']+' specific settings'
+					u = e['url']
+					w1 = cols - 20
+					if u.length >= w1
+						w1,w2 = w1.divmod 2
+						u = u[0..w1+w2]+'...'+u[-1-w1..-1]
+					end
+					puts u+' settings'
 				end
 			end
 			puts "  [n]\tAdd new URL"
