@@ -8,14 +8,12 @@
 # recommended:
 #	* GNU readline for ruby (for interactive configuration)
 # wishlist/todo?
-#	* ftp?
 #	* a get-and-diff-at-once ("fastcheck"/"fetchdiff") command [requested]
-#	* an option (-S or -L) to show lastlog on stderr
 # Please tell me if you find any bugs: Stephan Beyer <s-beyer@gmx.net>
 # You may also tell me your thoughts/ideas/opinion about this tool.
 
 ProgName = 'netstiff'
-ProgVersion = '20070322'
+ProgVersion = '20070621'
 DefaultTimeout = 20
 DefaultTest = 'diff'
 DefaultContext = 3
@@ -44,6 +42,7 @@ character (e.g. `c' instead of `configure'). Leading dashes are ignored.
 Without configuration, some commands will act like `configure'.
 
 Options:
+	--no-stderr, -S         suppress output on STDERR
 	--workdir DIR, -W DIR	specify working directory
 	                       	[#{$workdir}]
 
@@ -101,6 +100,63 @@ def str_to_re(str)
 # <apeiros> the obvious: eval or split the expression and use Regexp.new
 end
 
+def errorout(str)
+	$log.puts str
+	$stderr.puts str
+end
+
+## first some workarounds for used libs
+require 'net/ftp'
+module Net
+	class FTP
+		# first overwrite open and new to take ports!
+		def FTP.open(host, port = FTP_PORT, user = nil, passwd = nil, acct = nil)
+			if block_given?
+				ftp = new(host, port, user, passwd, acct)
+				begin
+					yield ftp
+				ensure
+					ftp.close
+				end
+			else
+				new(host, port, user, passwd, acct)
+			end
+		end
+		
+		def initialize(host = nil, port = FTP_PORT, user = nil, passwd = nil, acct = nil)
+			super()
+			@binary = true
+			@passive = false
+			@debug_mode = false
+			@resume = false
+			if host
+				connect(host,port)
+				if user
+					login(user, passwd, acct)
+				end
+			end
+		end
+
+		# a nice retr
+		def retr(path)
+			ret = ''
+			retrbinary('RETR '+path, DEFAULT_BLOCKSIZE) do |buf|
+				ret << buf
+			end
+			ret
+		end
+
+		# a nice listing
+		def listing(path)
+			ret = ''
+			list(path) do |line|
+				ret << line << "\n"
+			end
+			ret
+		end
+	end
+end
+
 module Options
 	def Options.err(s)
 		STDERR.puts "Error: #{s}\nAborting. See `#{$0} -h' for help."
@@ -110,10 +166,10 @@ module Options
 		case opt
 		when :W
 			$workdir = x
-			$workdir += '/' if $workdir[-1] != ?/
+			$workdir << '/' if $workdir[-1] != ?/
 		end
 	end
-	def Options.init
+	def Options.init # TODO: make code nicer. Just terrible! ;-)
 		args = 0
 		opt = nil
 		ARGV[0..-2].each do |z|
@@ -122,6 +178,9 @@ module Options
 				when '--workdir', '-W'
 					opt = :W
 					args = 1
+				when '--no-stderr', '-S'
+					def $stderr.write(x)
+					end
 				else
 					err("Unknown option: #{z}")
 				end
@@ -137,6 +196,10 @@ module Options
 			handle(opt,ARGV.last,args)
 			'g'
 		elsif ARGV.length == 0
+			'g'
+		elsif ARGV.last == '-S' or ARGV.last == '--no-stderr'
+			def $stderr.write(x)
+			end
 			'g'
 		else
 			ARGV.last
@@ -173,7 +236,7 @@ class Config
 		begin
 			readconfigfile use
 		rescue SystemCallError
-			$log.puts($!)
+			errorout $!
 			$log.puts('configuring')
 			configure
 			exit
@@ -198,7 +261,7 @@ class Config
 					@conf[i].merge!({k=>v})
 				else
 					i += 1
-					@conf << {'url'=>(line=~%r(^https?://) ? '':'http://')+line}
+					@conf << {'url'=> ((line=~%r(^(https?|ftp)://)i)==0 ? '':'http://')+line}
 				end
 			end
 		end
@@ -244,19 +307,27 @@ on the command line.
 # <url2>
 # ...
 #
-# variables are: client, lang, proxy, referer, test, timeout, range
-# <test> can be html, diff, size, date, md5sum or a /regexp/
-# diff is the default. The proxy value must be in the format <host>:<port>
+# For HTTP URLs:
+#  variables are: client, lang, proxy, referer, test, timeout, range
+#  <test> can be html, diff, size, date, md5sum or a /regexp/
+#  diff is the default.
+#  The proxy value must be in the format <host>:<port>
 # 
-# 'diff'/'html' test modes have two extra variables:
-# start /start regex/		and		end /end regex/	
-# These two are nice for dynamic web pages with a more interesting static 
-# part. Set start and end regex, and then #{ProgName} only diffs the content
-# between the first 'start' and the last 'end' match, and not a change 
-# like "xx users online" or a random (fortune) server signature.
+#  'diff'/'html' test modes have two extra variables:
+#  start /start regex/		and		end /end regex/
+#  These two are nice for dynamic web pages with a more interesting static 
+#  part. Set start and end regex, and then #{ProgName} only diffs the content
+#  between the first 'start' and the last 'end' match, and not a change 
+#  like "xx users online" or a random (fortune) server signature.
 # 
-# 'html' has a further extra variable: htmlcmd <command to htmldumper>
-# e.g. " + htmlcmd lynx -nolist -dump" or " + htmlcmd html2text"
+#  'html' has a further extra variable: htmlcmd <command to htmldumper>
+#  e.g. " + htmlcmd lynx -nolist -dump" or " + htmlcmd html2text"
+#
+# For FTP URLs:
+#  variables are: test, timeout, passive
+#  <test> can be diff, size, date
+#  diff is the default.
+#  passive is true by default.
 # 
 # All variable settings are optional.
 # Have fun! sbeyer
@@ -418,7 +489,7 @@ Type a range. Examples:
 		@conf[nr]['timeout'] = readln
 		emptydel nr,'timeout'
 	end
-	def configure_proxy(nr)
+	def configure_proxy(nr) # TODO: yet HTTP-only
 		puts "\nWhat is host and port of your HTTP proxy? Format: host:port"
 		begin
 		@conf[nr]['proxy'] = readln('http://')
@@ -845,8 +916,8 @@ module XXX  # how to name that? ;-)
 			begin
 				match = str.match(str_to_re(starts))
 			rescue SyntaxError
-				$log.puts "Error on parsing start regex \"#{starts}\"."
-				$log.puts $!
+				errorout "Error on parsing start regex \"#{starts}\"."
+				errorout $!
 				raise
 			end
 			match = str.match(str_to_re(starts))
@@ -858,8 +929,8 @@ module XXX  # how to name that? ;-)
 				begin
 					match = str[pos..-1].match(str_to_re(ends))
 				rescue SyntaxError
-					$log.puts "Error on parsing end regex \"#{ends}\"."
-					$log.puts $!
+					errorout "Error on parsing end regex \"#{ends}\"."
+					errorout $!
 					raise
 				end
 				match = str[pos..-1].match(str_to_re(ends))
@@ -892,13 +963,17 @@ class MainDiff < Main
 			list = @store[key]
 			next if list.nil?
 
-			list[0] = XXX.cutout(e['start'],e['end'], list[0])
-			list[1] = XXX.cutout(e['start'],e['end'], list[1])
-			next if list[0] == list[1]
+			if e['url'] =~ %r(^ftp://)i
+				# do nothing special
+			else # HTTP specialities
+				list[0] = XXX.cutout(e['start'],e['end'], list[0])
+				list[1] = XXX.cutout(e['start'],e['end'], list[1])
+				next if list[0] == list[1]
 
-			list[0] = XXX.process_html(list[0],e) if method == 'html'
-			list[1] = XXX.process_html(list[1],e) if method == 'html'
-			next if list[0] == list[1]
+				list[0] = XXX.process_html(list[0],e) if method == 'html'
+				list[1] = XXX.process_html(list[1],e) if method == 'html'
+				next if list[0] == list[1]
+			end
 
 			puts '--- '+e['url']
 			puts '+++ '+e['url']
@@ -939,7 +1014,7 @@ class MainGet < Main
 
 	def updatedata(key, value)
 		if value.nil?
-			$log.puts "#{key} - not set! choose another test method!"
+			errorout "#{key} - not set! choose another test method!"
 			return
 		end
 		unless @store[key].nil? or value == @store[key]
@@ -962,79 +1037,160 @@ class MainGet < Main
 		end
 	end
 
+	def httpget(e, url, doit)
+		header = {}
+		header['User-Agent'] = e['client'] unless e['client'].nil?
+		header['Referer'] = e['referer'] unless e['referer'].nil?
+		header['Accept-Language'] = e['lang'] unless e['lang'].nil?
+		header['Range'] = 'bytes=' + e['range'] unless e['range'].nil?
+		header['Authorization'] ='Basic '+[url.userinfo].pack('m') unless url.userinfo.to_s.empty?
+		header['Connection'] = 'close' # default
+		header['Cache-Control'] = 'no-cache' # Thanks to Alexander Logvinov!
+		header['Pragma'] = 'no-cache' # this, too
+		proxy, proxyport = e['proxy'].split(/:/) unless e['proxy'].nil?
+		proxyport = proxyport.to_i unless proxyport.nil?
+		timeout = e['timeout']
+		method = e['test']
+		path = '/'
+		path = url.path unless url.path.to_s.empty?
+		path << '?'+url.query unless url.query.to_s.empty?
+
+		conn = Net::HTTP.new(url.host, url.port, proxy, proxyport) # you can add "proxyuser", "proxypass" strings for proxy auth
+		conn.open_timeout = timeout.to_i
+		conn.start do
+			resp = {}
+			if ['size','md5sum','date'].member?(method)
+				resp = conn.head(path, header) # only need header (HEAD request)
+				case method
+				when 'size'
+					updatedata(name(method,e['url']), resp['Content-Length'], &doit)
+				when 'md5sum'
+					updatedata(name(method,e['url']), resp['Content-MD5'], &doit)
+				when 'date'
+					updatedata(name(method,e['url']), resp['Last-Modified'], &doit)
+				end
+			else
+				resp = conn.get(path, header) # get body (GET request)
+				if method == 'diff' or method == 'html'
+					begin
+						diffdata(name(method, e['url'], e['range']), resp.body) do |old,new|
+							old = XXX.cutout(e['start'],e['end'], old)
+							new = XXX.cutout(e['start'],e['end'], new)
+							if method == 'html'
+								old = XXX.process_html(old,e)
+								new = XXX.process_html(new,e)
+							end
+							if old != new
+								doit.call
+								true
+							else
+								false
+							end
+						end
+					rescue SyntaxError
+						$errors += 1
+					end
+				else # a regexp
+					begin
+						if resp.body =~ str_to_re(method)
+							doit.call
+						end
+					rescue SyntaxError
+						errorout "Error on parsing regex \"#{method}\"."
+						errorout $!
+						$errors += 1
+					end
+				end
+			end
+		end
+	end
+
+	def ftpget(e, url, doit)
+		Net::FTP.open(url.host, url.port, url.user, url.password) do |ftp|
+			case e['test']
+			when 'date', 'size'
+				begin
+					if e['test'] == 'date'
+						s = ftp.mdtm(url.path)
+					else
+						s = ftp.size(url.path)
+					end
+					updatedata(name(e['test'], e['url']), s, &doit)
+				rescue Net::FTPPermError
+					case $!.message[0,3]
+					when '530'
+						ftp.login('anonymous','netstiff')
+						retry
+					else
+						#p $!.class
+						#p $!.message
+						raise
+					end
+				end
+			when 'diff'
+				ftp.passive = true
+				if url.path[-1] == ?/
+					begin
+						s = ftp.listing(url.path)
+					rescue Net::FTPPermError
+						case $!.message[0,3]
+						when '530'
+							ftp.login('anonymous','netstiff')
+							retry
+						else
+							#p $!.class
+							#p $!.message
+							raise
+						end
+					end
+
+				else # assume a (binary) file (RETR). Failing? try LIST ;-)
+					begin
+						s = ftp.retr(url.path)
+					rescue Net::FTPPermError
+						case $!.message[0,3]
+						when '530'
+							ftp.login('anonymous','netstiff')
+							retry
+						when '550'
+							s = ftp.listing(url.path)
+						else
+							#p $!.class
+							#p $!.message
+							raise
+						end
+					end
+					# is it better to CWD, LIST, check if d-prefixed, then LIST else RETR?
+					# I think the current variant is better ;-) 
+				end
+				ftp.quit
+
+				diffdata(name('diff', e['url']), s) do |old,new|
+					if old != new
+						doit.call
+						true
+					else
+						false
+					end
+				end
+			end
+		end
+	end
+
 	def fetchurls
 		@config.each do |e|
 			begin
 				url = URI.parse(e['url'])
 				doit = proc { puts url }
-				header = {}
-				header['User-Agent'] = e['client'] unless e['client'].nil?
-				header['Referer'] = e['referer'] unless e['referer'].nil?
-				header['Accept-Language'] = e['lang'] unless e['lang'].nil?
-				header['Range'] = 'bytes=' + e['range'] unless e['range'].nil?
-				header['Authorization'] ='Basic '+[url.userinfo].pack('m') unless url.userinfo.to_s.empty?
-				header['Connection'] = 'close' # default
-				header['Cache-Control'] = 'no-cache' # Thanks to Alexander Logvinov!
-				header['Pragma'] = 'no-cache' # this, too
-				proxy, proxyport = e['proxy'].split(/:/) unless e['proxy'].nil?
-				proxyport = proxyport.to_i unless proxyport.nil?
-				timeout = e['timeout']
-				method = e['test']
-				path = '/'
-				path = url.path unless url.path.to_s.empty?
-				path << '?'+url.query unless url.query.to_s.empty?
-
-				conn = Net::HTTP.new(url.host, url.port, proxy, proxyport) # you can add "proxyuser", "proxypass" strings for proxy auth
-				conn.open_timeout = timeout.to_i
-				conn.start do
-					resp = {}
-					if ['size','md5sum','date'].member?(method)
-						resp = conn.head(path, header) # only need header (HEAD request)
-						case method
-						when 'size'
-							updatedata(name(method,e['url']), resp['Content-Length'], &doit)
-						when 'md5sum'
-							updatedata(name(method,e['url']), resp['Content-MD5'], &doit)
-						when 'date'
-							updatedata(name(method,e['url']), resp['Last-Modified'], &doit)
-						end
-					else
-						resp = conn.get(path, header) # get body (GET request)
-						if method == 'diff' or method == 'html'
-							begin
-								diffdata(name(method, e['url'], e['range']), resp.body) do |old,new|
-									old = XXX.cutout(e['start'],e['end'], old)
-									new = XXX.cutout(e['start'],e['end'], new)
-									if method == 'html'
-										old = XXX.process_html(old,e)
-										new = XXX.process_html(new,e)
-									end
-									if old != new
-										doit.call
-										true
-									else
-										false
-									end
-								end
-							rescue SyntaxError
-								$errors += 1
-							end
-						else # a regexp
-							begin
-								if resp.body =~ str_to_re(method)
-									doit.call
-								end
-							rescue SyntaxError
-								$log.puts "Error on parsing regex \"#{method}\"."
-								$log.puts $!
-								$errors += 1
-							end
-						end
-					end
+				scm = url.scheme.downcase
+				if scm[0,4] == 'http'
+					httpget(e, url, doit)
+				elsif scm == 'ftp'
+					ftpget(e, url, doit)
 				end
-			rescue	SocketError, Timeout::Error, URI::InvalidURIError, EOFError, Errno::ECONNREFUSED, Net::ProtocolError, Net::HTTPBadResponse, Net::HTTPHeaderSyntaxError
-			# should we just rescue StandardError?
-				$log.puts e['url']+': '+$!
+			rescue	SocketError, Timeout::Error, URI::InvalidURIError, EOFError, Errno::ECONNREFUSED, Net::ProtocolError, Net::HTTPBadResponse, Net::HTTPHeaderSyntaxError, Net::FTPError
+				# should we just rescue StandardError?
+				errorout e['url']+': '+$!
 				$errors += 1
 			end
 		end
@@ -1076,7 +1232,7 @@ else
 	#begin
 	#	MainGet.new
 	#rescue StandardError
-	#	$log.puts $!
+	#	errorout $!
 	#	$errors += 1
 	#end
 	### this is nicer, but ugly for bug reporting!
