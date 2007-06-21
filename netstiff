@@ -17,7 +17,12 @@ ProgVersion = '20070621'
 DefaultTimeout = 20
 DefaultTest = 'diff'
 DefaultContext = 3
+DefaultPassiveFTP = 'true'
 $workdir = ENV['HOME']+'/.'+ProgName+'/'
+
+# this looks stupid, but it's needed for something like
+#   netstiff -S -notexisting
+$stderr = $stderr.dup
 
 $errors = 0
 
@@ -110,7 +115,7 @@ require 'net/ftp'
 module Net
 	class FTP
 		# first overwrite open and new to take ports!
-		def FTP.open(host, port = FTP_PORT, user = nil, passwd = nil, acct = nil)
+		def FTP.open(host, port = FTP_PORT, user = nil, passwd = "", acct = nil)
 			if block_given?
 				ftp = new(host, port, user, passwd, acct)
 				begin
@@ -123,7 +128,7 @@ module Net
 			end
 		end
 		
-		def initialize(host = nil, port = FTP_PORT, user = nil, passwd = nil, acct = nil)
+		def initialize(host = nil, port = FTP_PORT, user = nil, passwd = "", acct = nil)
 			super()
 			@binary = true
 			@passive = false
@@ -132,7 +137,11 @@ module Net
 			if host
 				connect(host,port)
 				if user
-					login(user, passwd, acct)
+					if passwd.nil?
+						login(user, "", acct)
+					else
+						login(user, passwd, acct)
+					end
 				end
 			end
 		end
@@ -154,6 +163,13 @@ module Net
 			end
 			ret
 		end
+		#def sendcmd(cmd)
+		#	synchronize do
+		#		puts "DEBUG -- sending: \"#{cmd}\""
+		#		putline(cmd)
+		#		return getresp
+		#	end
+		#end
 	end
 end
 
@@ -166,7 +182,7 @@ module Options
 		case opt
 		when :W
 			$workdir = x
-			$workdir << '/' if $workdir[-1] != ?/
+			$workdir += '/' if $workdir[-1] != ?/
 		end
 	end
 	def Options.init # TODO: make code nicer. Just terrible! ;-)
@@ -249,19 +265,24 @@ class Config
 		@conf[key]
 	end
 
-	def readconfigfile use
+	def readconfigfile(use)
 		i = 0
+		lastcomment = ''
 		File.open($workdir+'config', 'r') do |conffile|
 			conffile.each_line do |line|
 				line.strip!
 				if line =~ /^#/ or line.empty?
-					next
+					lastcomment = line
 				elsif line =~ /^\+/
 					k, v = line[1..-1].strip.split(/\s+/, 2)
-					@conf[i].merge!({k=>v})
+					@conf[i][k] = v
+					lastcomment = ''
 				else
 					i += 1
 					@conf << {'url'=> ((line=~%r(^(https?|ftp)://)i)==0 ? '':'http://')+line}
+					unless lastcomment.empty?
+						@conf[i]['title'] = lastcomment.sub(/^#+ */, '')
+					end
 				end
 			end
 		end
@@ -271,6 +292,7 @@ class Config
 
 			# Default values overwritten?
 			glob['test'] = DefaultTest if glob['test'].nil?
+			glob['passive'] = DefaultPassiveFTP if glob['passive'].nil?
 			glob['timeout'] = DefaultTimeout if glob['timeout'].nil?
 
 			# Now set variables in every URI, if not set
@@ -301,16 +323,16 @@ on the command line.
 # # comment
 # + <globalvariable> <globalvalue>
 # + ...
-# <url1>
-# + <variable> <value-for-url1>
+# <uri1>
+# + <variable> <value-for-uri1>
 # + ...
-# <url2>
+# <uri2>
 # ...
 #
-# For HTTP URLs:
+# For HTTP URIs:
 #  variables are: client, lang, proxy, referer, test, timeout, range
 #  <test> can be html, diff, size, date, md5sum or a /regexp/
-#  diff is the default.
+#  #{DefaultTest} is the default.
 #  The proxy value must be in the format <host>:<port>
 # 
 #  'diff'/'html' test modes have two extra variables:
@@ -323,17 +345,19 @@ on the command line.
 #  'html' has a further extra variable: htmlcmd <command to htmldumper>
 #  e.g. " + htmlcmd lynx -nolist -dump" or " + htmlcmd html2text"
 #
-# For FTP URLs:
+# For FTP URIs:
 #  variables are: test, timeout, passive
 #  <test> can be diff, size, date
-#  diff is the default.
-#  passive is true by default.
+#  #{DefaultTest} is the default.
+#  passive is set to #{DefaultPassiveFTP} by default.
 # 
 # All variable settings are optional.
 # Have fun! sbeyer
 				EOH
 				@conf.each do |e|
-					out.puts "\n"+e['url'] unless e['url'].nil?
+					out.puts "\n"
+					out.puts '# '+e['title'] unless e['title'].nil?
+					out.puts e['url'] unless e['url'].nil?
 					out.puts "  + test\t"+e['test'] unless e['test'].nil?
 					out.puts "  + client\t"+e['client'] unless e['client'].nil?
 					out.puts "  + referer\t"+e['referer'] unless e['referer'].nil?
@@ -341,6 +365,7 @@ on the command line.
 					out.puts "  + range\t"+e['range'] unless e['range'].nil?
 					out.puts "  + timeout\t"+e['timeout'] unless e['timeout'].nil?
 					out.puts "  + proxy\t"+e['proxy'] unless e['proxy'].nil?
+					out.puts "  + passive\t"+e['passive'] unless e['passive'].nil?
 					out.puts "  + htmlcmd\t"+e['htmlcmd'] if e['test']=='html' and not e['htmlcmd'].nil?
 					if ['html','diff'].member?(e['test'])
 						out.puts "  + start\t"+e['start'] unless e['start'].nil?
@@ -362,16 +387,21 @@ on the command line.
 				if c == 0
 					puts 'Global settings'
 				else
-					u = e['url']
-					w1 = cols - 20
-					if u.length >= w1
-						w1,w2 = w1.divmod 2
-						u = u[0..w1+w2]+'...'+u[-1-w1..-1]
+					if e['title'].nil?
+						u = e['url']
+						w1 = cols - 20
+						if u.length >= w1
+							w1,w2 = w1.divmod 2
+							u = u[0..w1+w2]+'...'+u[-1-w1..-1]
+						end
+
+					else
+						u = e['title']
 					end
 					puts u+' settings'
 				end
 			end
-			puts "  [n]\tAdd new URL"
+			puts "  [n]\tAdd new URI"
 			puts
 			puts "  [f]\tFinished (exit & save)"
 			puts "  [x]\tExit without saving"
@@ -383,16 +413,18 @@ on the command line.
 			when 'n'
 				nr = @conf.length
 				configure_url(nr)
-				configure_testmethod(nr)
+				#configure_testmethod(nr)
+				configure_urlmenu(nr)
 			else
 				configure_urlmenu(c.to_i)
 			end
 		end
 	end
 
-	def choose(possible)
+	def choose(possible, allowempty=false)
 		puts
-		choice = readln("  Your choice [#{possible.join('/')}]: ") until possible.member?(choice)
+		choice = readln("  Your choice [#{possible.join('/')}]: ") until possible.member?(choice) or 
+		                                           (allowempty and not choice.nil? and choice.empty?)
 		puts "\n"
 		choice
 	end
@@ -400,7 +432,7 @@ on the command line.
 	def ask_regexp
 		puts "\n"+'Please type the regexp, e.g. /[Hh]ugo\s+wrote/ ...'
 		begin
-			re = readln
+			re = readln('> ')
 			str_to_re(re)
 		rescue SyntaxError
 			puts 'Incorrect regular expression! Try again:'
@@ -418,12 +450,27 @@ on the command line.
 		end
 	end
 	def configure_testmethod(nr)
-		puts <<-EOD
+		if show(nr,'url')=~ %r(^ftp://)i
+			puts <<-EOD
+
+Choose the TEST METHOD, the way of looking for changes. Type:
+	diff	This method downloads the whole file or the directory 
+	        listing and saves the two last versions. Later you can use 
+		`#{ProgName} diff' to take a look at a diff of these versions.
+	size	This method requests the size of the file on the FTP site
+	        to check if it changes.
+	date	This method requests the last modification date of the file
+	        on the FTP site to check when the file was last modified.
+			EOD
+			x = choose(['diff','size','date'],true)
+			@conf[nr]['test'] = x unless x.empty?
+		else # HTTP
+			puts <<-EOD
 
 Choose the TEST METHOD, the way of looking for changes. Type:
 	diff	This method downloads the whole file and saves the two 
-		last versions. Use the -d option to take a look at a diff 
-		of these versions.
+		last versions. Later you can use `#{ProgName} diff' to take
+		a look at a diff of these versions.
 	html	This method acts like 'diff', but ignores text between
 		'<' and '>' on diffing. (Those usually denote HTML tags.)
 	size	This method downloads the HTTP header to check if the file
@@ -438,9 +485,11 @@ Choose the TEST METHOD, the way of looking for changes. Type:
 		entity to make this method work.
 	regexp	This method downloads the whole file and checks if a given
 		regexp matches. Nothing is stored locally.
-		EOD
-		@conf[nr]['test'] = choose(['diff','html','size','date','md5sum','regexp'])
-		@conf[nr]['test'] = ask_regexp if @conf[nr]['test'] == 'regexp'
+			EOD
+			x = choose(['diff','html','size','date','md5sum','regexp'],true)
+			@conf[nr]['test'] = x unless x.empty?
+			@conf[nr]['test'] = ask_regexp if @conf[nr]['test'] == 'regexp'
+		end
 	end
 	def emptydel(nr,v)
 		if @conf[nr][v].empty?
@@ -452,17 +501,32 @@ Choose the TEST METHOD, the way of looking for changes. Type:
 	end
 	def configure_useragent(nr)
 		puts "\nType an User-Agent identification string:"
-		@conf[nr]['client'] = readln
+		@conf[nr]['client'] = readln('> ')
 		emptydel nr,'client'
 	end
 	def configure_referer(nr)
-		puts "\nType the suggested URL of the Referer[sic]:"
-		@conf[nr]['referer'] = readln
+		puts "\nType the suggested URI of the Referer[sic]:"
+		@conf[nr]['referer'] = readln('> ')
 		emptydel nr,'referer'
+	end
+	def configure_title(nr)
+		puts "\nType a menu title for the URI:"
+		@conf[nr]['title'] = readln('> ')
+		emptydel nr,'title'
+	end
+	def configure_passive(nr)
+		print "\nShould the FTP server's passive mode be requested?"
+		x = choose(['y','n'],true)
+		case x
+		when 'y'
+			@conf[nr]['passive'] = 'true'
+		when 'n'
+			@conf[nr]['passive'] = 'false'
+		end
 	end
 	def configure_lang(nr)
 		puts "\nType your language code, e.g de, ca or en:"
-		@conf[nr]['lang'] = readln
+		@conf[nr]['lang'] = readln('> ')
 		emptydel nr,'lang'
 	end
 	def configure_range(nr)
@@ -486,7 +550,7 @@ Type a range. Examples:
 	end
 	def configure_timeout(nr)
 		puts "\nConnection timeout in seconds:"
-		@conf[nr]['timeout'] = readln
+		@conf[nr]['timeout'] = readln('> ')
 		emptydel nr,'timeout'
 	end
 	def configure_proxy(nr) # TODO: yet HTTP-only
@@ -578,58 +642,67 @@ configuration part!                            Ready? Press a key.
 				puts "  [ ]\tGlobal"
 			else
 				possible=['u']
-				puts "  [u]\tURL: #{show(nr,'url')}"
+				puts "  [u]\tURI: #{show(nr,'url')}"
 			end
 			puts "  [m]\tTest method: #{testmeth nr}"
+			puts "  [x]\tMenu title: #{show(nr,'title')}"
+			possible += ['m','x']
 			puts
-			puts "  [a]\tUser-Agent: #{show(nr,'client')}"
-			puts "  [r]\tReferer: #{show(nr,'referer')}"
-			puts "  [l]\tAccept-Language: #{show(nr,'lang')}"
-			puts "  [b]\tRange: #{show(nr,'range')}"
-			puts "  [t]\tTimeout: #{show(nr,'timeout')}"
-			puts "  [p]\tProxy: #{show(nr,'proxy')}"
-			possible += ['m', 'a', 'r', 'l', 'b', 't', 'p']
-			if testmeth(nr) == 'html'
-				puts "  [h]\tCommand HTML dumper: #{show(nr,'htmlcmd')}"
-				possible << 'h'
-			else
-				puts "  [ ]\tCommand HTML dumper: [only available w/ html]"
-			end
-			if nr != 0
-				if ['html','diff'].member?(testmeth(nr))
-					puts "  [s]\tStart regexp: #{show(nr,'start')}"
-					puts "  [e]\tEnd regexp: #{show(nr,'end')}"
-					possible += ['s', 'e']
+			if show(nr,'url')=~ %r(^ftp://)i
+				puts "  [t]\tTimeout: #{show(nr,'timeout')}"
+				puts "  [v]\tPassive server: #{show(nr,'passive')}"
+				possible += ['t', 'v']
+			else # HTTP
+				puts "  [a]\tUser-Agent: #{show(nr,'client')}"
+				puts "  [r]\tReferer: #{show(nr,'referer')}"
+				puts "  [l]\tAccept-Language: #{show(nr,'lang')}"
+				puts "  [b]\tRange: #{show(nr,'range')}"
+				puts "  [t]\tTimeout: #{show(nr,'timeout')}"
+				puts "  [p]\tProxy: #{show(nr,'proxy')}"
+				possible += ['a', 'r', 'l', 'b', 't', 'p']
+				if testmeth(nr) == 'html'
+					puts "  [h]\tCommand HTML dumper: #{show(nr,'htmlcmd')}"
+					possible << 'h'
 				else
-					puts "  [ ]\tStart regexp: [only avail w/ diff or html]"
-					puts "  [ ]\tEnd regexp: [only avail w/ diff or html]"
+					puts "  [ ]\tCommand HTML dumper: [only available w/ html]"
+				end
+				if nr != 0
+					if ['html','diff'].member?(testmeth(nr))
+						puts "  [s]\tStart regexp: #{show(nr,'start')}"
+						puts "  [e]\tEnd regexp: #{show(nr,'end')}"
+						possible += ['s', 'e']
+					else
+						puts "  [ ]\tStart regexp: [only avail w/ diff or html]"
+						puts "  [ ]\tEnd regexp: [only avail w/ diff or html]"
+					end
 				end
 			end
-
 			puts
 
 			if nr > 0
-				puts "  [d]\tDelete URL from list."
+				puts "  [d]\tDelete URI from list."
 				possible << 'd'
 			end
 			puts "  [f]\tI have finished."
 			possible << 'f'
 			case (choice = choose(possible))
-			when 'u' then configure_url(nr)
-			when 'm' then configure_testmethod(nr)
 			when 'a' then configure_useragent(nr)
-			when 'r' then configure_referer(nr)
-			when 'l' then configure_lang(nr)
 			when 'b' then configure_range(nr)
-			when 't' then configure_timeout(nr)
-			when 'p' then configure_proxy(nr)
-			when 'h' then configure_htmlcmd(nr)
-			when 's' then @conf[nr]['start'] = ask_regexp
-			when 'e' then @conf[nr]['end'] = ask_regexp
 			when 'd'
 				@conf.delete_at(nr)
 				return
+			when 'e' then @conf[nr]['end'] = ask_regexp
 			when 'f' then return
+			when 'h' then configure_htmlcmd(nr)
+			when 'l' then configure_lang(nr)
+			when 'm' then configure_testmethod(nr)
+			when 'p' then configure_proxy(nr)
+			when 'r' then configure_referer(nr)
+			when 's' then @conf[nr]['start'] = ask_regexp
+			when 't' then configure_timeout(nr)
+			when 'u' then configure_url(nr)
+			when 'v' then configure_passive(nr)
+			when 'x' then configure_title(nr)
 			end
 		end
 	end
@@ -965,6 +1038,7 @@ class MainDiff < Main
 
 			if e['url'] =~ %r(^ftp://)i
 				# do nothing special
+				next if list[0] == list[1]
 			else # HTTP specialities
 				list[0] = XXX.cutout(e['start'],e['end'], list[0])
 				list[1] = XXX.cutout(e['start'],e['end'], list[1])
@@ -1107,6 +1181,7 @@ class MainGet < Main
 
 	def ftpget(e, url, doit)
 		Net::FTP.open(url.host, url.port, url.user, url.password) do |ftp|
+			url.path << '/' if url.path.nil? or url.path.empty?
 			case e['test']
 			when 'date', 'size'
 				begin
@@ -1119,7 +1194,7 @@ class MainGet < Main
 				rescue Net::FTPPermError
 					case $!.message[0,3]
 					when '530'
-						ftp.login('anonymous','netstiff')
+						ftp.login('anonymous',ProgName)
 						retry
 					else
 						#p $!.class
@@ -1128,14 +1203,14 @@ class MainGet < Main
 					end
 				end
 			when 'diff'
-				ftp.passive = true
+				ftp.passive = true unless e['passive'].downcase == 'false'
 				if url.path[-1] == ?/
 					begin
 						s = ftp.listing(url.path)
 					rescue Net::FTPPermError
 						case $!.message[0,3]
 						when '530'
-							ftp.login('anonymous','netstiff')
+							ftp.login('anonymous',ProgName)
 							retry
 						else
 							#p $!.class
@@ -1150,7 +1225,7 @@ class MainGet < Main
 					rescue Net::FTPPermError
 						case $!.message[0,3]
 						when '530'
-							ftp.login('anonymous','netstiff')
+							ftp.login('anonymous',ProgName)
 							retry
 						when '550'
 							s = ftp.listing(url.path)
