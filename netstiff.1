@@ -1,4 +1,4 @@
-.TH "NETSTIFF" "1" "20070621" "sbeyer" "web"
+.TH "NETSTIFF" "1" "20070621" "sbeyer" "netstiff"
 .SH "NAME"
 .LP
 netstiff \- powerful and easy tool to check for Web and FTP updates
@@ -16,7 +16,7 @@ The FTP update checker is only able to \fCdiff\fR on directory listings and file
 and to compare \fCsize\fR and \fCdate\fR of files.
 Please see the configurator for more information on these methods.
 
-Without given command, netstiff will only check for updates 
+Without a given command, netstiff will only check for updates 
 of the specified URIs and only print those that changed, one per
 line, so that the output of netstiff can easily be used by 
 further scripts (e.g. \fIwget\fP or \fImail\fP).
@@ -81,7 +81,7 @@ This command will display version number and copyright.
 You may pass the following options.
 .TP
 \fB--no-stderr, -S\fR
-Use this option to suppress warning and error messages on stderr.
+Use this option to suppress warning and error messages on \fCstderr\fR.
 Thus the messages can only be seen in the log file.
 .TP
 \fB--workdir DIR, -W DIR\fR
