@@ -1,19 +1,21 @@
+2007-06-21  Stephan Beyer <s-beyer@gmx.net>
+
+  - added menu titles for URLs, which are comments in the config file
+  - added (beta) FTP support
+  - print errors on stderr and added -S option to suppress it
+  - made main menu honour COLUMNS (does not really work)
+  - fixed tiny logging bug
+
 2007-03-22  Stephan Beyer <s-beyer@gmx.net>
 
   - internal changes, minor bugfixes at the same time
   - external HTML dumpers for 'html' method can now be used [requested]
   - project renamed from  webdiff  to  netstiff, due to name conflicts
     with the webdiff program which is part of websec
-
-2007-03-21  Stephan Beyer <s-beyer@gmx.net>
-
   - added simple GNU Makefile [requested]
   - old "options" became commands (long names which may be shortened),
     added explicit `get' command
   - added `-W DIR' option [requested]
-
-2007-03-19  Stephan Beyer <s-beyer@gmx.net>
-
   - got rid of libalgorithm-diff-ruby by including its code inline.
     Thanks to Lars Christensen although I didn't get to contact him
     because all e-mail addresses that I got, didn't work!
@@ -28,9 +30,6 @@
   - added "thanks to" section in manpage
   - added exit codes and error counting
   - fixed timeout exception handling [requested]
-
-2007-03-01  Stephan Beyer <s-beyer@gmx.net>
-
   - regex/eval warning in manpage
   - added "start" and "end" variables for `html'/`diff' test methods
   - removed test method saving bug in configurator

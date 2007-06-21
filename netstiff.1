@@ -1,31 +1,31 @@
-.TH "NETSTIFF" "1" "20070322" "sbeyer" "web"
+.TH "NETSTIFF" "1" "20070621" "sbeyer" "netstiff"
 .SH "NAME"
 .LP
-netstiff \- powerful and easy tool to check for web page updates
+netstiff \- powerful and easy tool to check for Web and FTP updates
 .SH "SYNOPSIS"
 .LP
 \fBnetstiff\fR [\fIoptions\fP] [\fIcommand\fP]
 .SH "DESCRIPTION"
 .LP
 Netstiff (formerly known as webdiff) is a powerful and easy-to-use tool
-which checks for web page updates. Updates are recognized using several
-test criteria (\fCdiff\fR, \fChtml\fR, \fCsize\fR, \fCdate\fR, 
-\fCmd5sum\fR, \fCregexp\fR). Please see the configurator for more 
-information on these methods.
+which checks for Web page and/or FTP site updates. 
 
-Without given command, netstiff will only check for updates 
+For the Web, updates are recognized using several test criteria (\fCdiff\fR, 
+\fChtml\fR, \fCsize\fR, \fCdate\fR, \fCmd5sum\fR, \fCregexp\fR).
+The FTP update checker is only able to \fCdiff\fR on directory listings and files
+and to compare \fCsize\fR and \fCdate\fR of files.
+Please see the configurator for more information on these methods.
+
+Without a given command, netstiff will only check for updates 
 of the specified URIs and only print those that changed, one per
 line, so that the output of netstiff can easily be used by 
 further scripts (e.g. \fIwget\fP or \fImail\fP).
 If no configuration file exists, the configurator is launched
 instead.
 
-Netstiff exits after all configured web pages are checked. Occuring 
-warnings and errors leave a message in the log file 
-(\fI~/.netstiff/lastlog\fP) and are not written to stderr.
-The exit code will be the number of errors that occured. So exit
-code 0 is success.
-
+Netstiff exits after all configured Web pages are checked.
+Occuring warnings and errors leave a message in the log file 
+(\fI~/.netstiff/lastlog\fP) and on stderr.
 Use it with \fIcron\fP if you want to check for updates regularly.
 
 .SH "COMMANDS"
@@ -55,7 +55,7 @@ automatically.
 .TP
 \fBdiff\fR
 Use this command if you want to see the differences between the last two
-versions of the web pages that are configured with test method \fCdiff\fR
+versions of the Web pages that are configured with test method \fCdiff\fR
 or \fChtml\fR. See \fIdiff(1)\fP. 
 .TP
 \fBget\fR
@@ -80,6 +80,10 @@ This command will display version number and copyright.
 .LP
 You may pass the following options.
 .TP
+\fB--no-stderr, -S\fR
+Use this option to suppress warning and error messages on \fCstderr\fR.
+Thus the messages can only be seen in the log file.
+.TP
 \fB--workdir DIR, -W DIR\fR
 Use this option if you want to specify another working directory. The
 working directory is the directory where netstiff reads the configuration
@@ -90,7 +94,7 @@ file, stores the downloaded data and writes it logs. See \fBBUGS\fR.
 There is no special case to handle status codes other than 200. In 
 practice, netstiff will neither follow redirections nor will it notice
 any 4xx or 5xx error code. The resulting error pages are treated like
-usual web pages. No logged message. Please check on your own.
+usual Web pages. No logged message. Please check on your own.
 
 .SH "USAGE EXAMPLE"
 .LP
@@ -101,7 +105,7 @@ You want to add a new URI netstiff should check for updates.
 The configurator is not described here. I know some weaknesses in
 usability, but you can get along with it. When you are seeing your 
 shell prompt again, you know that netstiff should retrieve an initial 
-version of the web page you specified.
+version of the Web page you specified.
 .nf
 \&        \fCnetstiff\fR
 .fi
@@ -125,12 +129,16 @@ do
 .fi
 and netstiff forgets about the changes.
 
+.SH "RETURN VALUE"
+.LP
+The number of errors are returned. So exit code 0 is success.
+
 .SH "BUGS"
 .LP
 The regular expression stuff is using the \fIeval\fP function of
 Ruby. This means that you are able to do non\-regex\-related stuff
 using special strings as `regular expressions'. This is a big 
-security issue when using netstiff as a backend for e.g. web
+security issue when using netstiff as a backend for e.g. Web
 applications. So do NOT do it and NEVER start netstiff on foreign,
 unchecked configurations (\fB-W\fR can be dangerous). 
 
