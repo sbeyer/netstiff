@@ -1,3 +1,9 @@
+netstiff (20070621-1) unstable; urgency=low
+
+  * New upstream release
+
+ -- Stephan Beyer <s-beyer@gmx.net>  Thu, 21 Jun 2007 20:42:07 +0200
+
 netstiff (20070322-1) unstable; urgency=low
 
   * Initial release (Closes: #413124)
