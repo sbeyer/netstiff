@@ -1265,7 +1265,7 @@ class MainGet < Main
 				end
 			rescue	SocketError, Timeout::Error, URI::InvalidURIError, EOFError, Errno::ECONNREFUSED, Net::ProtocolError, Net::HTTPBadResponse, Net::HTTPHeaderSyntaxError, Net::FTPError
 				# should we just rescue StandardError?
-				errorout e['url']+': '+$!
+				errorout e['url']+' : '+$!
 				$errors += 1
 			end
 		end
