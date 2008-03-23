@@ -1,0 +1,573 @@
+#!/usr/bin/ruby
+# (C) 2004,2007, Stephan Beyer, GPL
+#
+# requirements:
+#	* ruby standard distribution (net::http, uri, pstore, getoptlong)
+#	  http://www.ruby-lang.org (at least version 1.8)
+#	* libalgorithm-diff for ruby
+#	  http://users.cybercity.dk/~dsl8950/ruby/diff.html
+# recommended:
+#	* GNU readline for ruby (for interactive configuration)
+# wishlist/todo?
+#	* correct diff unified format ranges output(!)
+#	* https, ftp
+#	* use rdtool to create manpage? No.
+#	* nicer code ;)
+# Please tell me if you find any bugs: Stephan Beyer <s-beyer@gmx.net>
+# You may also tell me your thoughts/ideas/opinion about this tool.
+
+ProgName = 'webdiff'
+ProgVersion = '20070227'
+WorkDir = ENV['HOME']+'/.'+ProgName+'/'
+DefaultTimeout = 20
+DefaultTest = 'diff'
+
+def showversion
+	puts "#{ProgName} #{ProgVersion}\t\t(C) Stephan Beyer, 2004,2007, GNU GPL"
+end
+def showusage
+	puts <<-EOU
+
+Usage:	#{$0} [option]
+
+Option can be one of:
+	--configure, -c		Reconfigure #{ProgName}
+	--diff, -d		Print the current differences
+	--help, -h		Print this help
+	--reset, -r		Reset current differences
+	--version, -v		Print current version
+
+Further options are ignored.
+See the manual page `man 1 #{ProgName}'.
+
+Have fun!
+	EOU
+end
+
+def name(test, url, suffix=nil)
+	if suffix.nil?
+		test+'::'+url
+	else
+		test+'::'+url+'::'+suffix
+	end
+end
+
+$gnu =	begin
+	require 'readline'
+	true
+rescue LoadError
+	false
+end
+def readln(str = '')
+	if $gnu
+		Readline.readline(str, true)
+	else
+		print str
+		STDIN.gets.chomp
+	end
+end
+
+class Store
+	require 'pstore'
+	def initialize
+		@db = PStore.new(WorkDir+'store')
+	end
+	def each
+		@db.transaction do
+			@db.roots.each do |*args|
+				yield(*args)
+			end
+		end
+	end
+	def [](key)
+		@db.transaction(true) do @db[key] end
+	end
+	def []=(key,value)
+		@db.transaction do @db[key]=value end
+	end
+	def delete(key)
+		@db.delete(key)
+	end
+end
+
+class Config
+	def initialize
+		@glob = {}
+		@conf = [{}]
+		begin
+			readconfigfile
+		rescue SystemCallError
+			$log.puts($!)
+			$log.puts('configuring')
+			configure
+			exit
+		end
+	end
+	def each(&block)
+		@conf.each(&block)
+	end
+	def [](key)
+		if key.class == String
+			@glob[key]
+		else
+			@conf[key]
+		end
+	end
+
+	def readconfigfile
+		i = 0
+		File.open(WorkDir+'config', 'r') do |conffile|
+			conffile.each_line do |line|
+				line.strip!
+				if line =~ /^#/ or line.empty?
+					next
+				elsif line =~ /^\+/
+					k, v = line[1..-1].strip.split(/\s+/, 2)
+					@conf[i].merge!({k=>v})
+				else
+					i += 1
+					@conf << {'url'=>(line=~%r(^http://) ? '':'http://')+line}
+				end
+			end
+		end
+		@glob = @conf.shift
+	end
+
+	def configure(reconfigure=false)
+		@conf.unshift(@glob) if reconfigure
+		showversion
+		print <<-EOD
+
+This is the #{ProgName} #{ProgVersion} interactive configuration tool.
+#{ProgName} uses a simple human-readable configuration file
+	#{WorkDir+'config'}
+but you can always use this tool by executing `#{$0} -c' 
+on the command line.
+		EOD
+		if configure_mainmenu # save config
+			File.open(WorkDir+'config', 'w') do |out|
+				out.print <<-EOH
+# webdiff configuration file, type `webdiff -c' to configure
+# Format:
+# # comment
+# + <globalvariable> <globalvalue>
+# <url1>
+# + <variable> <value>
+# + ...
+# <url2>
+# ...
+# variables are: client, lang, proxy, referer, test, timeout, range
+# <test> can be html, diff, size, date, md5sum or a <regexp>
+# diff is the default. proxy must be in the format <host>:<port>
+# All variable settings are optional.
+# Have fun! sbeyer
+				EOH
+				@conf.each do |e|
+					out.puts "\n"+e['url'] unless e['url'].nil?
+					out.puts "  + test\t"+e['test'] unless 
+					           e['test'].nil? or e['test']==DefaultTest
+					out.puts "  + client\t"+e['client'] unless e['client'].nil?
+					out.puts "  + referer\t"+e['referer'] unless e['referer'].nil?
+					out.puts "  + lang\t"+e['lang'] unless e['lang'].nil?
+					out.puts "  + range\t"+e['range'] unless e['range'].nil?
+					out.puts "  + timeout\t"+e['timeout'] unless e['timeout'].nil?
+					out.puts "  + proxy\t"+e['proxy'] unless e['proxy'].nil?
+				end
+			end
+		end
+	end
+	def configure_mainmenu
+		loop do
+			puts "\n\n"
+			possible = ['n', 'f', 'x']
+			@conf.each_with_index do |e, c|
+				print "\t[#{c}]\t"
+				possible << c.to_s
+				if c == 0
+					puts 'Global settings'
+				else
+					puts e['url']+' specific settings'
+				end
+			end
+			puts "\t[n]\tAdd new URL"
+			puts
+			puts "\t[f]\tFinished (exit & save)"
+			puts "\t[x]\tExit without saving"
+			case (c = choose(possible))
+				when 'f'
+					return true
+				when 'x'
+					return false
+				when 'n'
+					nr = @conf.length
+					configure_url(nr)
+					configure_testmethod(nr)
+				else
+					configure_urlmenu(c.to_i)
+			end
+		end
+	end
+
+	def choose(possible)
+		puts
+		choice = readln("\tYour choice [#{possible.join('/')}]: ") until possible.member?(choice)
+		puts "\n"
+		choice
+	end
+
+	def configure_url(nr)
+		puts "\nPlease type the correct URL of the web page you want to check for updates:"
+		if @conf[nr].nil?
+			@conf[nr] = {'url'=>'http://'+readln('http://')}
+		else
+			@conf[nr]['url'] = 'http://'+readln('http://')
+		end
+	end
+	def configure_testmethod(nr)
+		puts <<-EOD
+
+Choose the TEST METHOD, the way of looking for changes. Type:
+	diff	This method downloads the whole file and saves the two 
+		last versions. Use the -d option to take a look at a diff 
+		of these versions.
+	html	This method acts like 'diff', but ignores text between
+		'<' and '>' on diffing. (Those usually denote HTML tags.)
+	size	This method downloads the HTTP header to check if the file
+		size changes. The server should response the Content-Length
+		header entity. (works in most cases)
+	date	This method downloads the HTTP header to check when the file
+		was last modified. This behaviour can cause problems when
+		fetching some dynamic web sites. The server should response
+		the Last-Modified header entity. (works in most cases)
+	md5sum	This method downloads the HTTP header to check if the MD5 sum
+		changes. The server should response the Content-MD5 header
+		entity to make this method work.
+	regexp	This method downloads the whole file and checks if a given
+		regexp matches. Nothing is stored locally.
+		EOD
+		@conf[nr]['test'] = choose(['diff','html','size','date','md5sum','regexp'])
+		if @conf[nr]['test'] == 'regexp'
+			puts "\n"+'Please type the regexp, e.g. /[Hh]ugo\s+wrote/ ...'
+			begin
+				@conf[nr]['test'] = readln
+				eval('%r'+@conf[nr]['test'])
+			rescue SyntaxError
+				puts 'Incorrect regular expression! Try again:'
+				retry
+			end
+		end
+	end
+	def configure_useragent(nr)
+		puts "\nType an User-Agent identification string:"
+		@conf[nr]['client'] = readln
+	end
+	def configure_referer(nr)
+		puts "\nType the suggested URL of the Referer[sic]:"
+		@conf[nr]['referer'] = readln
+	end
+	def configure_lang(nr)
+		puts "\nType your language code, e.g de, ca or en:"
+		@conf[nr]['lang'] = readln
+	end
+	def configure_range(nr)
+		# This option only makes sense when using the DIFF method
+		puts
+		puts 'Note: You should NOT use this option globally.' if nr==0
+		puts 'Not all HTTP servers support this feature.'
+		puts <<-EOH
+Type a range. Examples:
+	 0-99	= get the first 100 bytes (byte 0 to byte 99)
+	  -99	= get the last 99 bytes
+	99-99	= get the 99th byte
+	99-	= get all bytes, beginning with the 99th
+	65-923	= get bytes 65 to 923
+		EOH
+		begin
+			@conf[nr]['range'] = readln('> ')
+		end until (@conf[nr]['range'] =~ /^\d*-\d*$/) or
+		           @conf[nr]['range'].empty?
+	end
+	def configure_timeout(nr)
+		puts "\nConnection timeout in seconds:"
+		@conf[nr]['timeout'] = readln
+	end
+	def configure_proxy(nr)
+		puts "\nWhat is host and port of your HTTP proxy? Format: host:port"
+		begin
+		@conf[nr]['proxy'] = readln('http://')
+		end until (@conf[nr]['proxy'] =~ /^[\w\.-]+:\d+$/) or
+		           @conf[nr]['proxy'].empty?
+	end
+	def configure_urlmenu(nr)
+		loop do
+			puts "\n\n"
+			if nr == 0 then
+				possible=[]
+				puts "\t[ ]\tGlobal"
+			else
+				possible=['u']
+				puts "\t[u]\tURL: #{@conf[nr]['url']}"
+			end
+			puts "\t[m]\tTest method: #{@conf[nr]['test']}"
+			puts
+			puts "\t[a]\tUser-Agent: #{@conf[nr]['client']}"
+			puts "\t[r]\tReferer: #{@conf[nr]['referer']}"
+			puts "\t[l]\tAccept-Language: #{@conf[nr]['lang']}"
+			puts "\t[b]\tRange: #{@conf[nr]['range']}"
+			puts "\t[t]\tTimeout: #{@conf[nr]['timeout']}"
+			puts "\t[p]\tProxy: #{@conf[nr]['proxy']}"
+			puts
+			possible += ['m', 'a', 'r', 'l', 'b', 't', 'p']
+			if nr > 0
+				puts "\t[d]\tDelete URL from list."
+				possible << 'd'
+			end
+			puts "\t[f]\tI have finished."
+			possible << 'f'
+			case (choice = choose(possible))
+				when 'u' then configure_url(nr)
+				when 'm' then configure_testmethod(nr)
+				when 'a' then configure_useragent(nr)
+				when 'r' then configure_referer(nr)
+				when 'l' then configure_lang(nr)
+				when 'b' then configure_range(nr)
+				when 't' then configure_timeout(nr)
+				when 'p' then configure_proxy(nr)
+				when 'd'
+					@conf.delete_at(nr)
+					return
+				when 'f' then return
+			end
+		end
+	end
+end
+
+class Main
+	def initialize
+		@config = Config.new
+		@store = Store.new
+		cleanup
+	end
+
+	def getconf(e, key)
+		# return e[key]'s value
+		# if not set return global value
+		# if not set return default value or nil
+		if not e[key].nil?
+			e[key]
+		elsif @config[key].nil?
+			case key
+				when 'test' then DefaultTest
+				when 'timeout' then DefaultTimeout
+				else nil
+			end
+		else
+			@config[key]
+		end
+	end
+
+	def cleanup
+		@store.each do |key|
+			verify = false
+			@config.each do |e|
+				verify = true if key == name(getconf(e, 'test'), e['url'], getconf(e,'range'))
+			end
+			unless verify
+				@store.delete(key)
+				$log.puts "deleted stored `#{key}' data"
+			end
+		end
+	end
+end
+
+class MainDiff < Main
+	require 'algorithm/diff'
+
+	def initialize
+		super
+		@config.each do |e|
+			method = getconf(e, 'test')
+			next unless ['diff','html'].member?(method)
+			key = name(method, e['url'], getconf(e, 'range'))
+			list = @store[key]
+			next if list.nil?
+			next if list[0] == list[1]
+			puts '--- '+e['url']
+			puts '+++ '+e['url']
+			file1, file2 = [], []
+			list[0].each_line do |line| file1 << line end
+			list[1].each_line do |line| file2 << line end
+			printdiff(file1.diff(file2))
+		end
+	end
+
+	def diffrange(a, b)
+		if b == 1
+			"#{a}"
+		else
+			"#{a},#{b}"
+		end
+	end
+
+	def printdiff(diff)
+		diff.each do |d|
+			primline = d[1]+1
+			lines = d[2].length
+			# FIXME: this is not the correct unified diff format!
+			puts "@@ -#{diffrange(primline,lines)} @@" if d[0] == :-
+			puts "@@ +#{diffrange(primline,lines)} @@" if d[0] == :+
+			d[2].each do |line|
+				print d[0].to_s+line
+			end
+		end
+	end
+end
+
+class MainReset < Main
+	def initialize
+		super
+		@config.each do |e|
+			method = getconf(e, 'test')
+			next unless ['diff','html'].member?(method)
+			key = name(method, e['url'], getconf(e, 'range'))
+			list = @store[key]
+			next if list.nil?
+			next if list[0] == list[1]
+			list[0] = list[1]
+			@store[key] = list
+		end
+	end
+end
+
+class MainConfigure < Main
+	def initialize
+		super
+		@config.configure true
+	end
+end
+
+class MainGet < Main
+	require 'net/http'
+	require 'uri'
+
+	def initialize
+		super
+		fetchurls
+	end
+
+	def updatedata(key, value)
+		if value.nil?
+			$log.puts "#{key} - not set! choose another test method!"
+			return
+		end
+		unless @store[key].nil? or value == @store[key]
+			yield
+			$log.puts "#{key} - changed"
+		end
+		@store[key] = value
+	end
+
+	def diffdata(key, value)
+		if @store[key].nil?
+			@store[key] = [value, value]
+			$log.puts "#{key} - set"
+		else
+			if @store[key][1] != value
+				@store[key] = [@store[key][1], value]
+				yield
+				$log.puts "#{key} - changed"
+			end
+		end
+	end
+
+	# simple regular <.*> matcher and remover.
+	# Could fail on nested <tags>, on wrong HTML and on Javascript.
+	def tagstrip(str)
+		str.gsub(/([\r\n]|<[^<>]*>)+/,"\n").gsub(/[ \t]+/,' ').gsub(/([\r\n][ \t]+)+[\r\n]?/, "\n")
+	end
+
+	def fetchurls
+		@config.each do |e|
+			url = URI.parse(e['url'])
+			todo = proc { puts url }
+			header = {}
+			header['User-Agent'] = getconf(e, 'client') unless getconf(e, 'client').nil?
+			header['Referer'] = getconf(e, 'referer') unless getconf(e, 'referer').nil?
+			header['Accept-Language'] = getconf(e, 'lang') unless getconf(e, 'lang').nil?
+			header['Range'] = 'bytes='+getconf(e, 'range') unless getconf(e, 'range').nil?
+			header['Authorization'] ='Basic '+[url.userinfo].pack('m') unless url.userinfo.to_s.empty?
+			header['Connection'] = 'close' # default
+			proxy, proxyport = getconf(e, 'proxy').split(/:/) unless getconf(e, 'proxy').nil?
+			proxyport = proxyport.to_i unless proxyport.nil?
+			timeout = getconf(e, 'timeout')
+			method = getconf(e, 'test')
+			path = '/'
+			path = url.path unless url.path.to_s.empty?
+			path << '?'+url.query unless url.query.to_s.empty?
+			
+			begin
+				conn = Net::HTTP.new(url.host, url.port, proxy, proxyport)
+				conn.open_timeout = timeout.to_i
+				conn.start do
+					resp = {}
+					if ['size','md5sum','date'].member?(method)
+						resp = conn.head(path, header) # only need header (HEAD request)
+						case method
+							when 'size'
+								updatedata(name(method,e['url']), resp['Content-Length'], &todo)
+							when 'md5sum'
+								updatedata(name(method,e['url']), resp['Content-MD5'], &todo)
+							when 'date'
+								updatedata(name(method,e['url']), resp['Last-Modified'], &todo)
+						end
+					else
+						resp = conn.get(path, header) # get body (GET request)
+						if method == 'diff'
+							diffdata(name(method, e['url'], getconf(e, 'range')), resp.body, &todo)
+						elsif method == 'html'
+							diffdata(name(method, e['url'], getconf(e, 'range')), tagstrip(resp.body), &todo)
+						else
+							begin
+								if resp.body =~ eval('%r'+method)
+									todo.call
+								end
+							rescue SyntaxError
+								$log.puts $!
+							end
+						end
+					end
+				end
+			rescue SocketError
+				$log.puts e['url']+': '+$!
+			end
+		end
+	end
+end
+
+Dir.mkdir(WorkDir) unless File.exist?(WorkDir)
+$log = File.new(WorkDir+'lastlog', 'w')
+END {
+	$log.close
+}
+
+# options
+case ARGV[0]
+	when '--configure', '-c'
+		MainConfigure.new
+	when '--diff', '-d'
+		MainDiff.new
+	when '--help', '-h'
+		showversion
+		showusage
+	when '--reset', '-r'
+		MainReset.new
+	when '--version', '-v'
+		showversion
+	else
+		MainGet.new
+		#begin
+		#	MainGet.new
+		#rescue StandardError
+		#	$log.puts $!
+		#end
+end

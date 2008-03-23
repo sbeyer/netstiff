@@ -1,0 +1,24 @@
+2007-02-27  Stephan Beyer <s-beyer@gmx.net>
+
+  - added `html' test method; is it sane?
+  - rewrote big parts of the manual page
+
+2004-08-01  Stephan Beyer <s-beyer@gmx.net>
+
+  - added -r/--reset option to reset differences
+
+2004-07-27  Stephan Beyer <s-beyer@gmx.net>
+
+  - added optional GNU readline support for interactive configuration
+
+2004-07-21  Stephan Beyer <s-beyer@gmx.net>
+
+  - added 'range' option to be able to get and diff ranges of web pages only
+  - minor changes to Config::configure_* code
+  - fixed two nested bugs:
+     - Main::cleanup didn't work the way it was supposed to
+     - reset of URLs with given port
+
+2004-07-20  Stephan Beyer <s-beyer@gmx.net>
+
+  - initial release
