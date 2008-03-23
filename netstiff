@@ -452,6 +452,7 @@ on the command line.
 		else
 			@conf[nr]['url'] = x
 		end
+		@conf[nr]['url'] = 'http://' + @conf[nr]['url'] if (@conf[nr]['url'] =~ %r(^(https?|ftp)://)i).nil?
 		@conf[nr]['url']
 	end
 	def configure_testmethod(nr)
