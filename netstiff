@@ -413,9 +413,10 @@ on the command line.
 				return false
 			when 'n'
 				nr = @conf.length
-				configure_url(nr)
-				#configure_testmethod(nr)
-				configure_urlmenu(nr)
+				unless configure_url(nr).nil?
+					#configure_testmethod(nr)
+					configure_urlmenu(nr)
+				end
 			else
 				configure_urlmenu(c.to_i)
 			end
@@ -444,11 +445,14 @@ on the command line.
 
 	def configure_url(nr)
 		puts "\nPlease type the correct URI of the web page you want to check for updates:"
+		x = readln('> ')
+		return nil if x.empty?
 		if @conf[nr].nil?
-			@conf[nr] = {'url'=>readln('> ')}
+			@conf[nr] = {'url' => x}
 		else
-			@conf[nr]['url'] = readln('> ')
+			@conf[nr]['url'] = x
 		end
+		@conf[nr]['url']
 	end
 	def configure_testmethod(nr)
 		if show(nr,'url')=~ %r(^ftp://)i
