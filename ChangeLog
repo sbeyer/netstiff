@@ -2,6 +2,8 @@
 
   - internal changes, minor bugfixes at the same time
   - external HTML dumpers for 'html' method can now be used [requested]
+  - project renamed from  webdiff  to  netstiff, due to name conflicts
+    with the webdiff program which is part of websec
 
 2007-03-21  Stephan Beyer <s-beyer@gmx.net>
 

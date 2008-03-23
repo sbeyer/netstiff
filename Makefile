@@ -1,8 +1,8 @@
-# simple, stupid GNU Makefile for (un)installing webdiff
+# simple, stupid GNU Makefile for (un)installing netstiff
 ifndef DESTDIR
 DESTDIR=/usr/local
 endif
-PROGNAME=webdiff
+PROGNAME=netstiff
 
 all:
 	test -e /usr/bin/ruby

@@ -1,4 +1,4 @@
-I have to thank the following people for contributing to webdiff:
+I have to thank the following people for contributing to netstiff:
  - Lars Christensen 
    * wrote libalgorithm-diff for Ruby
  - Alexander Logvinov
@@ -15,4 +15,4 @@ I have to thank the following people for contributing to webdiff:
    * discussion
  - Martin Aumueller
    * requested Makefile
-   * made me using webdiff again
+   * made me using this tool again

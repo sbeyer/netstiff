@@ -1,4 +1,5 @@
 #!/usr/bin/ruby
+# netstiff (formerly known as webdiff)
 # (C) 2004,2007, Stephan Beyer, GNU GPL
 #
 # requirements:
@@ -13,7 +14,7 @@
 # Please tell me if you find any bugs: Stephan Beyer <s-beyer@gmx.net>
 # You may also tell me your thoughts/ideas/opinion about this tool.
 
-ProgName = 'webdiff'
+ProgName = 'netstiff'
 ProgVersion = '20070322'
 DefaultTimeout = 20
 DefaultTest = 'diff'
