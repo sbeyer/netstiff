@@ -1,6 +1,6 @@
 #!/usr/bin/ruby
 # netstiff (formerly known as webdiff)
-# (C) 2004,2007, Stephan Beyer, GNU GPL
+# Copyright (C) 2004, 2007-2008  Stephan Beyer
 #
 # requirements:
 #	* ruby standard distribution (net::http, uri, pstore)
@@ -10,6 +10,20 @@
 #	* OpenSSL for Ruby (libopenssl-ruby) -> for https://...
 # wishlist/todo?
 #	* a get-and-diff-at-once ("fastcheck"/"fetchdiff") command [requested]
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+#
 # Please tell me if you find any bugs: Stephan Beyer <s-beyer@gmx.net>
 # You may also tell me your thoughts/ideas/opinion about this tool.
 
@@ -28,7 +42,8 @@ $stderr = $stderr.dup
 $errors = 0
 
 def showversion
-	puts "#{ProgName} #{ProgVersion}\t\t(C) 2004, 2007 Stephan Beyer, GNU GPL"
+	x = "#{ProgName} #{ProgVersion} "
+	puts x+' '*(23-x.length)+'Copyright (C) 2004, 2007-2008  Stephan Beyer, GNU GPL'
 end
 def showusage
 	puts <<-EOU

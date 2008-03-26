@@ -2,18 +2,25 @@
 .SH "NAME"
 .LP
 netstiff \- powerful and easy tool to check for Web and FTP updates
+
 .SH "SYNOPSIS"
 .LP
-\fBnetstiff\fR [\fIoptions\fP] [\fIcommand\fP]
+\fBnetstiff\fP [\fIoptions\fP] [\fIcommand\fP]
+
 .SH "DESCRIPTION"
 .LP
 Netstiff (formerly known as webdiff) is a powerful and easy-to-use tool
 which checks for Web page and/or FTP site updates. 
 
-For the Web, updates are recognized using several test criteria (\fCdiff\fR, 
-\fChtml\fR, \fCsize\fR, \fCdate\fR, \fCmd5sum\fR, \fCregexp\fR).
-The FTP update checker is only able to \fCdiff\fR on directory listings and files
-and to compare \fCsize\fR and \fCdate\fR of files.
+For the Web, updates are recognized using several test criteria
+(\fCdiff\fP,
+\fChtml\fP,
+\fCsize\fP,
+\fCdate\fP,
+\fCmd5sum\fP,
+\fCregexp\fP).
+The FTP update checker is only able to \fCdiff\fP on directory listings and files
+and to compare \fCsize\fP and \fCdate\fP of files.
 Please see the configurator for more information on these methods.
 
 Without a given command, netstiff will only check for updates 
@@ -25,7 +32,7 @@ instead.
 
 Netstiff exits after all configured Web pages are checked.
 Occuring warnings and errors leave a message in the log file 
-(\fI~/.netstiff/lastlog\fP) and on stderr.
+(\fC~/.netstiff/lastlog\fP) and on \fCstderr\fP.
 Use it with \fIcron\fP if you want to check for updates regularly.
 
 .SH "COMMANDS"
@@ -38,94 +45,99 @@ Commands may be shortened down to one character (e.g. `c' instead of
 
 If you start netstiff without command, `get' will be used.
 .TP
-\fBconfigure\fR
+\fBconfigure\fP
 Use this command if you want to start the configurator, the interactive
 configuration tool of netstiff. Of course, you may also edit the 
-configuration file in \fI~/.netstiff/config\fP by hand. Using the 
+configuration file in \fC~/.netstiff/config\fP by hand. Using the 
 configurator is recommended if you are a new netstiff user, because
 it explains the possible test methods, validates your regexps, etc.
 Nevertheless, the configuration file format is very easy.
+See section \fBCONFIGURATION FILE\fP.
 .br
 The configurator will not initialize the netstiff cache for added
-URIs, meaning: it will not download anything. To do so, you have to
-rerun netstiff. This is a feature.
+URIs, i.e. it will not download anything.
+To do so, you have to rerun netstiff. This is a feature.
 .br
 If the config file does not exit, the configuration tool is started 
 automatically.
 .TP
-\fBdiff\fR
+\fBdiff\fP
 Use this command if you want to see the differences between the last two
-versions of the Web pages that are configured with test method \fCdiff\fR
-or \fChtml\fR. See \fIdiff(1)\fP. 
+versions of the Web pages that are configured with test method \fCdiff\fP
+or \fChtml\fP. See \fIdiff\fP\|(1). 
 .TP
-\fBget\fR
+\fBget\fP
 Use this command if you want netstiff to fetch the data from the 
 specified URIs and show you only those that changed, one per line.
-The behaviour is already described in \fBDESCRIPTION\fR.
+The behaviour is already described in \fBDESCRIPTION\fP.
 .TP
-\fBhelp\fR
+\fBhelp\fP
 Use this command to get usage information about netstiff. To be honest,
 this manual page in conjunction with the configurator is a better 
 documentation.
 .TP
-\fBreset\fR
-Use this command after you noticed all differences with the \fBdiff\fR 
-command (see above), so that \fBdiff\fR will not show you the same changes
+\fBreset\fP
+Use this command after you noticed all differences with the \fBdiff\fP 
+command (see above), so that \fBdiff\fP will not show you the same changes
 again and again.
 .TP
-\fBversion\fR
+\fBversion\fP
 This command will display version number and copyright.
 
 .SH "OPTIONS"
 .LP
 You may pass the following options.
 .TP
-\fB--no-stderr, -S\fR
-Use this option to suppress warning and error messages on \fCstderr\fR.
+\fB--no-stderr, -S\fP
+Use this option to suppress warning and error messages on \fCstderr\fP.
 Thus the messages can only be seen in the log file.
 .TP
-\fB--workdir DIR, -W DIR\fR
+\fB--workdir DIR, -W DIR\fP
 Use this option if you want to specify another working directory. The
 working directory is the directory where netstiff reads the configuration
-file, stores the downloaded data and writes it logs. See \fBBUGS\fR.
+file, stores the downloaded data and writes it logs.
+It defaults to \fC~/.netstiff\fP.
+See also section \fBBUGS\fP.
 
 .SH "RESTRICTIONS"
 .LP
 There is no special case to handle status codes other than 200. In 
 practice, netstiff will neither follow redirections nor will it notice
-any 4xx or 5xx error code. The resulting error pages are treated like
+any 4xx or 5xx error code. The resulting error pages are treated as
 usual Web pages. No logged message. Please check on your own.
 
 .SH "USAGE EXAMPLE"
 .LP
 You want to add a new URI netstiff should check for updates.
 .nf
-\&        \fCnetstiff conf\fR
+\&        \fCnetstiff conf\fP
 .fi
 The configurator is not described here. I know some weaknesses in
-usability, but you can get along with it. When you are seeing your 
-shell prompt again, you know that netstiff should retrieve an initial 
+usability, but you can get along with it.
+
+When you are seeing your shell prompt again,
+you know that netstiff should retrieve an initial 
 version of the Web page you specified.
 .nf
-\&        \fCnetstiff\fR
+\&        \fCnetstiff\fP
 .fi
 After some weeks in the sun you want to see if something has changed. 
 So you let netstiff check for updates.
 .nf
-\&        \fCnetstiff\fR
+\&        \fCnetstiff\fP
 .fi
 It is printing an URI! Let's see the changes!
 .nf
-\&        \fCnetstiff diff\fR
+\&        \fCnetstiff diff\fP
 .fi
 Oh, it is so much, that it does not fit on a screen!
 .nf
-\&        \fCnetstiff d | pager\fR
+\&        \fCnetstiff d | pager\fP
 .fi
 Now you are satisfied because you read all the changes. So you finally
 do
 .nf
-\&        \fCnetstiff reset\fR
+\&        \fCnetstiff reset\fP
 .fi
 and netstiff forgets about the changes.
 
@@ -133,17 +145,48 @@ and netstiff forgets about the changes.
 .LP
 The number of errors are returned. So exit code 0 is success.
 
+.SH "CONFIGURATION FILE"
+.LP
+There is no need to manually edit the configuration file
+\fIWORKDIR\fC/config\fR (usually \fC~/.netstiff/config\fP),
+because \fCnetstiff configure\fP should do the job.
+But sometimes it is easier to edit a simple file than to
+browse through menus, or you are writing another application
+that changes netstiff settings.
+So it is useful to describe the file format here.
+
+.SS "RULES"
+.IP " \(bu" 3
+Whitespace at the begin and end of each line is ignored.
+.IP " \(bu" 3
+Empty lines are ignored.
+.IP " \(bu" 3
+A line beginning with \fC#\fP is regarded as comment.
+.IP " \(bu" 3
+A line beginning with \fC+\fP is regarded as option.
+The \fC+\fP is followed by the \fIoption name\fR,
+some whitespace and the \fIoption value\fR.
+Boolean options do not have values.
+.IP " \(bu" 3
+A line neither beginning with \fC#\fP nor \fC+\fP is regarded as URI.
+.IP " \(bu" 3
+The configurator interprets a comment line above an URI line as the title of the URI.
+
+.SS "CONFIGURATION OPTIONS"
+.LP
+This is a TODO subsection.
+
 .SH "BUGS"
 .LP
 The regular expression stuff is using the \fIeval\fP function of
-Ruby. This means that you are able to do non\-regex\-related stuff
+Ruby. This means that you are able to do non-regex-related stuff
 using special strings as `regular expressions'. This is a big 
 security issue when using netstiff as a backend for e.g. Web
 applications. So do NOT do it and NEVER start netstiff on foreign,
-unchecked configurations (\fB-W\fR can be dangerous). 
+unchecked configurations (\fB-W\fP can be dangerous). 
 
 Feel free to send feedback, bug reports, etc.
 
 .SH "AUTHOR AND COPYRIGHT"
 .LP
-\(co 2004, 2007 Stephan Beyer \fC<s\-beyer@gmx.net>\fR, GNU GPL
+\(co 2004, 2007-2008 Stephan Beyer \fC<s\-beyer@gmx.net>\fP, GNU GPL
