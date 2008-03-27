@@ -322,6 +322,10 @@ http://localhost/stats.php
 # sbeyer's homepage
 http://pkqs.net/~sbeyer/
 
+# buggy scripts test
+http://localhost/buggyscripts/test.cgi
+  + test /Internal Server Error/
+
 # muetze's funny videos
 ftp://foo:duff23@muetze.localnet/funnyvideos/
   + passive false
@@ -332,20 +336,59 @@ ftp://foo:duff23@muetze.localnet/funnyvideos/
 The following test methods can be used:
 .TP
 \fBdate\fP
+On HTTP URIs,
+this method downloads the HTTP header to check when the file
+has last been modified.
+To make this feature work, the server should response
+the \fILast-Modified\fP header entity.
+This behaviour can become useless when fetching some dynamic web sites.
+.br
+On FTP URIs,
+this method requests the last modification date of the file
+on the FTP site to check when the file has last been modified.
 .TP
 \fBdiff\fP
+This method downloads the 
+HTTP content, FTP file or FTP directory listing 
+and saves the two last versions.
+Later you can use \fCnetstiff diff\fP to take a look at a 
+diff of these versions.
 .TP
 \fBhtml\fP
+This method acts like \fCdiff\fP,
+but assumes to get HTML input
+and preprocesses it to it more human-readable.
+.br
+See also the description of the \fChtmlcmd\fP option
+in section \fBCONFIGURATION FILE / CONFIGURATION OPTIONS\fP.
 .br
 This method is not available on FTP URIs.
 .TP
 \fBmd5sum\fP
+This method downloads the HTTP header to check if the MD5 sum has changed.
+The server should response the \fIContent-MD5\fP header entity to make this
+method work.
+.br
+Use this method on big binary files on HTTP sites and only if
+the server supports it. (\fCnetstiff\fP will tell you.)
 .br
 This method is not available on FTP URIs.
 .TP
 \fBsize\fP
+On HTTP URIs, 
+this method downloads the HTTP header to check if the file
+size has changed.
+This feature needs the server to response 
+the \fIContent-Length\fP header entity.
+.br
+On FTP URIs,
+this method requests the size of the file on the FTP site
+to check if it has changed.
 .TP
 \fB/regexp/\fP
+This method downloads the HTTP content and checks if the 
+given regular expression matches.
+No data is stored locally.
 .br
 This method is not available on FTP URIs.
 

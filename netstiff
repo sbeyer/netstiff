@@ -492,8 +492,8 @@ Choose the TEST METHOD, the way of looking for changes. Type:
 	diff	This method downloads the whole file and saves the two 
 		last versions. Later you can use `#{ProgName} diff' to take
 		a look at a diff of these versions.
-	html	This method acts like 'diff', but ignores text between
-		'<' and '>' on diffing. (Those usually denote HTML tags.)
+	html	This method acts like 'diff', but assumes to get HTML input
+		and preprocesses it to make it more human-readable.
 	size	This method downloads the HTTP header to check if the file
 		size changes. The server should response the Content-Length
 		header entity. (works in most cases)
