@@ -1,4 +1,4 @@
-.TH "NETSTIFF" "1" "20070621" "sbeyer" "netstiff"
+.TH "NETSTIFF" "1" "20080327" "sbeyer" "netstiff"
 .SH "NAME"
 .LP
 netstiff \- powerful and easy tool to check for Web and FTP updates
@@ -141,10 +141,6 @@ do
 .fi
 and netstiff forgets about the changes.
 
-.SH "RETURN VALUE"
-.LP
-The number of errors are returned. So exit code 0 is success.
-
 .SH "CONFIGURATION FILE"
 .LP
 There is no need to manually edit the configuration file
@@ -166,15 +162,196 @@ A line beginning with \fC#\fP is regarded as comment.
 A line beginning with \fC+\fP is regarded as option.
 The \fC+\fP is followed by the \fIoption name\fR,
 some whitespace and the \fIoption value\fR.
-Boolean options do not have values.
 .IP " \(bu" 3
 A line neither beginning with \fC#\fP nor \fC+\fP is regarded as URI.
+URIs without scheme (\fChttps://\fP, \fChttp://\fP, \fCftp://\fP)
+are recognized as HTTP URIs.
 .IP " \(bu" 3
-The configurator interprets a comment line above an URI line as the title of the URI.
+The configurator interprets a comment right above an URI as the title of the URI.
+.IP " \(bu" 3
+Options always apply to the first URI above.
+Options without URI line above are \fIglobal options\fP and affect
+every URI that does not override these specific options.
 
 .SS "CONFIGURATION OPTIONS"
 .LP
-This is a TODO subsection.
+The following options are generally available:
+.TP
+\fBtest\fP
+sets the test method (or test criteria).
+.br
+See section \fBTEST METHODS\fP for a description.
+Defaults to \fCdiff\fP.
+.TP
+\fBtimeout\fP
+sets the timeout (in seconds) for TCP connections.
+.br
+Defaults to 20.
+.LP
+The following options only affect HTTP URIs:
+.TP
+\fBclient\fP
+set the user-agent string.
+.br
+Some web sites check the HTTP header field \fIUser-Agent\fP
+and display different content for different agents.
+By setting this field you can pretend to use Mozilla Firefox,
+for example.
+Because many log analyzer tools for webmasters display statistics
+about that field, you may spread the word about netstiff by
+setting this variable to the truth: \fCnetstiff\fP. ;-)
+.br
+\fIExample:\fP \fC+ client Mozilla/5.0 (X11; U; Linux i686; en-US; rv:1.8.1.12) Gecko/20080208 Galeon/2.0.4\fP
+.br
+This option is not set by default.
+.TP
+\fBlang\fP
+sets the accepted languages.
+.br
+Internationalized web sites offer there contents in different
+languages and may check the HTTP header field \fIAccept-Language\fP.
+It contains a list of languages (and sometimes extra information
+like associated countries) sorted by priority.
+The best way to get a good value is to copy and paste it from the
+preferences of your web browser.
+.br
+\fIExample:\fP \fCde,en;q=0.9\fP
+.br
+This option is not set by default.
+.TP
+\fBproxy\fP
+sets HTTP proxy host and port.
+Must be in the form \fChost:port\fP.
+Will fail if no port is given.
+.TP
+\fBrange\fP
+sets the range (in bytes) to get from a server.
+.br
+Use this option if you are only interested in the changes within a 
+small region of a big file on a HTTP server.
+Examples are \fC12000-12500\fP or \fC13000-\fP (till the end).
+.br
+The Range feature is not supported by all web servers or for
+every content. That means, that some web servers send
+the whole content instead of only the given range.
+.br
+This option is not set by default.
+.TP
+\fBreferer\fP
+sets the referrer.
+.br
+Some web sites check the HTTP header field \fIReferer\fP
+and refuse to display the wished contents if it is not appropriately set.
+When clicking on a link in an ordinary web browser, 
+the referrer is set to the URI, where you clicked on the link.
+By setting this option to an URI, 
+you can pretend clicking on a link on the web page of this URI.
+Please do not use this option to `advertise' your
+own homepage (so-called \fIreferer spamming\fP).
+.br
+This option is not set by default.
+.LP
+The following options only affect the test method \fChtml\fP:
+.TP
+\fBhtmlcmd\fP
+sets the command that is used to produce non-HTML human-readable
+output. The command will be run on a temporary file.
+.br
+Doing many experiments I got my best results using
+\fC+ htmlcmd lynx -nolist -dump\fP.
+Other dumpers had features, 
+like justified text or well-formatted tables,
+that turned out to be disadvantages 
+when looking at the diffs.
+.br
+This option is not set by default. If you use the \fChtml\fP test
+method then, a very simple mechanism will hide HTML tags.
+It is possible to get good results doing that, but it is not
+likely and thus not recommended to leave this option unset.
+.LP
+The following options only affect the test methods \fCdiff\fP and \fChtml\fP:
+.TP
+\fBstart\fP, \fBend\fP
+\fIMotivation:\fP Many modern or CMS-generated web pages have
+a dynamic and a static part. For example, at the beginning
+of a web page there is always a randomly chosen citation the
+author liked. At the end there is a calendar showing the current
+date, a weather analysis for the next days, and some other useless
+stuff.
+The information you want to monitor for changes (the \fIstatic part\fP)
+is situated between those dynamic parts.
+It is very often possible to figure out \fItextual anchors\fP,
+that indicate the start or the end of the static part.
+.br
+Using this options you can set regular expressions to that
+anchors.
+For example, if the last entry of the navigation bar is \fIImprint\fP
+and thereafter comes the static part, set \fC+ start /Imprint/\fP.
+I hope, you can imagine analogous examples for the \fCend\fP option.
+.br
+Note, that the regular expressions act on the 
+unprocessed input (e.g. HTML source code),
+also when using the \fChtml\fP test method.
+.br
+These options are not set by default.
+.LP
+The following options only affect FTP URIs:
+.TP
+\fBpassive\fP
+is a boolean option (value \fCtrue\fP or \fCfalse\fP, case-insensitive).
+Passive mode (PASV) will not be used on FTP connections
+iff set to \fCfalse\fP.
+.br
+Defaults to \fCtrue\fP.
+
+.SS "EXAMPLE"
+.LP
+.nf\fC
+# this is my netstiff config file
++ test      html
++ htmlcmd   lynx -nolist -dump
++ client    netstiff
++ lang      de_DE
++ timeout   6
+
+# local usage statistics
+http://localhost/stats.php
+  + start   /Statistics/
+  + end     /Generating page took/
+
+# sbeyer's homepage
+http://pkqs.net/~sbeyer/
+
+# muetze's funny videos
+ftp://foo:duff23@muetze.localnet/funnyvideos/
+  + passive false
+.fi
+
+.SH "TEST METHODS"
+.LP
+The following test methods can be used:
+.TP
+\fBdate\fP
+.TP
+\fBdiff\fP
+.TP
+\fBhtml\fP
+.br
+This method is not available on FTP URIs.
+.TP
+\fBmd5sum\fP
+.br
+This method is not available on FTP URIs.
+.TP
+\fBsize\fP
+.TP
+\fB/regexp/\fP
+.br
+This method is not available on FTP URIs.
+
+.SH "RETURN VALUE"
+.LP
+The number of errors are returned. So exit code 0 is success.
 
 .SH "BUGS"
 .LP
