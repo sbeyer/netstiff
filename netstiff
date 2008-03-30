@@ -1130,12 +1130,11 @@ class MainGet < Main
 	def diffdata(key, value)
 		if @store[key].nil?
 			@store[key] = [value, value]
-			$log.puts "#{key} - set"
+			$log.puts "#{key} - initialized"
 		else
-			if @store[key][1] != value
-				@store[key] = [@store[key][1], value]
-				$log.puts "#{key} - changed" if	yield @store[key][0], @store[key][1]
-
+			if yield @store[key][0], value
+				$log.puts "#{key} - changes detected"
+				@store[key] = [@store[key][0], value]
 			end
 		end
 	end

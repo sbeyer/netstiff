@@ -62,9 +62,12 @@ If the config file does not exit, the configuration tool is started
 automatically.
 .TP
 \fBdiff\fP
-Use this command if you want to see the differences between the last two
+Use this command if you want to see the differences between two
 versions of the Web pages that are configured with test method \fCdiff\fP
 or \fChtml\fP. See \fIdiff\fP\|(1). 
+
+\fBdiff\fP compares the version of the last \fBreset\fP 
+(or the initial version) and the version of the last \fBget\fP.
 .TP
 \fBget\fP
 Use this command if you want netstiff to fetch the data from the 
