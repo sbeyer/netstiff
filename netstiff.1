@@ -1,4 +1,4 @@
-.TH "NETSTIFF" "1" "20080327" "sbeyer" "netstiff"
+.TH "NETSTIFF" "1" "20080331" "sbeyer" "netstiff"
 .SH "NAME"
 .LP
 netstiff \- powerful and easy tool to check for Web and FTP updates
@@ -21,9 +21,8 @@ For the Web, updates are recognized using several test criteria
 \fCregexp\fP).
 The FTP update checker is only able to \fCdiff\fP on directory listings and files
 and to compare \fCsize\fP and \fCdate\fP of files.
-Please see the configurator for more information on these methods.
 
-Without a given command, netstiff will only check for updates 
+Without a given command, netstiff will check for updates 
 of the specified URIs and only print those that changed, one per
 line, so that the output of netstiff can easily be used by 
 further scripts (e.g. \fIwget\fP or \fImail\fP).
@@ -40,10 +39,10 @@ Use it with \fIcron\fP if you want to check for updates regularly.
 You can only pass one command to netstiff. It has to be the last argument
 in the argument list.
 
-Commands may be shortened down to one character (e.g. `c' instead of 
-`configure'). Leading dashes are ignored.
+Commands may be shortened down to one character (e.g. \fBc\fP instead of 
+\fBconfigure\fP). Leading dashes are ignored.
 
-If you start netstiff without command, `get' will be used.
+If you start netstiff without command, \fBget\fP will be used.
 .TP
 \fBconfigure\fP
 Use this command if you want to start the configurator, the interactive
@@ -63,15 +62,16 @@ automatically.
 .TP
 \fBdiff\fP
 Use this command if you want to see the differences between two
-versions of the Web pages that are configured with test method \fCdiff\fP
-or \fChtml\fP. See \fIdiff\fP\|(1). 
+versions of saved content (Web pages or meta data).
+See \fIdiff\fP\|(1). 
 
-\fBdiff\fP compares the version of the last \fBreset\fP 
-(or the initial version) and the version of the last \fBget\fP.
+The version after the last \fBreset\fP (or the initial version) 
+and the version of the last \fBget\fP will be compared.
 .TP
 \fBget\fP
 Use this command if you want netstiff to fetch the data from the 
-specified URIs and show you only those that changed, one per line.
+specified URIs and show you only those \- one per line \- 
+that have changed since your last \fBget\fP.
 The behaviour is already described in \fBDESCRIPTION\fP.
 .TP
 \fBhelp\fP
@@ -390,8 +390,9 @@ to check if it has changed.
 .TP
 \fB/regexp/\fP
 This method downloads the HTTP content and checks if the 
-given regular expression matches.
-No data is stored locally.
+given regular expression matches or not.
+The URI is prompted (when using \fBget\fP) 
+iff this match status has changed.
 .br
 This method is not available on FTP URIs.
 

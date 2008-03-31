@@ -744,7 +744,7 @@ class Main
 			end
 			unless verify
 				@store.delete(key)
-				$log.puts "deleted stored `#{key}' data"
+				$log.puts "#{key} - removed"
 			end
 		end
 	end
@@ -1051,33 +1051,36 @@ class MainDiff < Main
 	def initialize
 		super
 		@config.each do |e|
-			method = e['test']
-			next unless ['diff','html'].member?(method) ## will we change this and generate pseudo-diffs?
-			key = name(method, e['url'], e['range'])
+			key = name(e['test'], e['url'], e['range'])
 			list = @store[key]
 			next if list.nil?
 
-			if e['url'] =~ %r(^ftp://)i
-				# do nothing special
-				next if list[0] == list[1]
-			else # HTTP specialities
-				list[0] = XXX.cutout(e['start'],e['end'], list[0])
-				list[1] = XXX.cutout(e['start'],e['end'], list[1])
-				next if list[0] == list[1]
+			showdiff(e, list[0].to_s, list[1].to_s)
+		end
+	end
 
-				list[0] = XXX.process_html(list[0],e) if method == 'html'
-				list[1] = XXX.process_html(list[1],e) if method == 'html'
-				next if list[0] == list[1]
+	def showdiff(e, old, new)
+		return if old == new
+		method = e['test']
+		if ['diff','html'].member? method and not e['url'] =~ %r(^ftp://)i
+			old = XXX.cutout(e['start'],e['end'], old)
+			new = XXX.cutout(e['start'],e['end'], new)
+			return if old == new
+			if method == 'html'
+				old = XXX.process_html(old,e)
+				new = XXX.process_html(new,e)
+				return if old == new
 			end
+		end
 
-			puts '--- '+e['url']
-			puts '+++ '+e['url']
-			file1, file2 = [], []
-			list[0].each_line do |line| file1 << line end
-			list[1].each_line do |line| file2 << line end
-			Diff.unified(file1,file2,DefaultContext) do |str|
-				print str
-			end
+		puts "diff --netstiff #{method} #{e['url']}"
+		puts '--- '+e['url']
+		puts '+++ '+e['url']
+		file1, file2 = [], []
+		file1 = old.split(/\n/).map do |x| x<<"\n" end
+		file2 = new.split(/\n/).map do |x| x<<"\n" end
+		Diff.unified(file1,file2,DefaultContext) do |str|
+			print str
 		end
 	end
 end
@@ -1086,9 +1089,7 @@ class MainReset < Main
 	def initialize
 		super
 		@config.each do |e|
-			method = e['test']
-			next unless ['diff','html'].member?(method)
-			key = name(method, e['url'], e['range'])
+			key = name(e['test'], e['url'], e['range'])
 			list = @store[key]
 			next if list.nil?
 			next if list[0] == list[1]
@@ -1110,36 +1111,30 @@ class MainGet < Main
 		rescue LoadError
 			@avail_https = false
 		end
-		fetchurls do |url|
-			puts url
+		fetchurls do |url,old,new|
+			puts url if old != new
+			old != new
 		end
 	end
 
 	def updatedata(key, value)
 		if value.nil?
 			errorout "#{key} - not set! choose another test method!"
-			return
-		end
-		unless @store[key].nil? or value == @store[key]
-			yield
-			$log.puts "#{key} - changed"
-		end
-		@store[key] = value
-	end
-
-	def diffdata(key, value)
-		if @store[key].nil?
+			false
+		elsif @store[key].nil?
 			@store[key] = [value, value]
 			$log.puts "#{key} - initialized"
+			false
+		elsif yield @store[key][1], value
+			@store[key] = [@store[key][0], value]
+			$log.puts "#{key} - changes detected"
+			true
 		else
-			if yield @store[key][0], value
-				$log.puts "#{key} - changes detected"
-				@store[key] = [@store[key][0], value]
-			end
+			false
 		end
 	end
 
-	def httpget(e, url, doit)
+	def httpget(e, url)
 		header = {}
 		header['User-Agent'] = e['client'] unless e['client'].nil?
 		header['Referer'] = e['referer'] unless e['referer'].nil?
@@ -1172,29 +1167,30 @@ class MainGet < Main
 				resp = conn.head(path, header) # only need header (HEAD request)
 				case method
 				when 'size'
-					updatedata(name(method,e['url']), resp['Content-Length'], &doit)
+					updatedata(name(method,e['url']), resp['Content-Length']) do |old,new|
+						yield old, new
+					end
 				when 'md5sum'
-					updatedata(name(method,e['url']), resp['Content-MD5'], &doit)
+					updatedata(name(method,e['url']), resp['Content-MD5']) do |old,new|
+						yield old, new
+					end
 				when 'date'
-					updatedata(name(method,e['url']), resp['Last-Modified'], &doit)
+					updatedata(name(method,e['url']), resp['Last-Modified']) do |old,new|
+						yield old, new
+					end
 				end
 			else
 				resp = conn.get(path, header) # get body (GET request)
 				if method == 'diff' or method == 'html'
 					begin
-						diffdata(name(method, e['url'], e['range']), resp.body) do |old,new|
+						updatedata(name(method, e['url'], e['range']), resp.body) do |old,new|
 							old = XXX.cutout(e['start'],e['end'], old)
 							new = XXX.cutout(e['start'],e['end'], new)
 							if method == 'html'
 								old = XXX.process_html(old,e)
 								new = XXX.process_html(new,e)
 							end
-							if old != new
-								doit.call
-								true
-							else
-								false
-							end
+							yield old, new if old != new
 						end
 					rescue SyntaxError
 						$errors += 1
@@ -1202,7 +1198,13 @@ class MainGet < Main
 				else # a regexp
 					begin
 						if resp.body =~ str_to_re(method)
-							doit.call
+							updatedata(name(method.to_s, e['url'], e['range']), 'match') do |old,new|
+								yield old, new
+							end
+						else
+							updatedata(name(method.to_s, e['url'], e['range']), 'no match') do |old,new|
+								yield old, new
+							end
 						end
 					rescue SyntaxError
 						errorout "Error on parsing regex \"#{method}\"."
@@ -1214,7 +1216,7 @@ class MainGet < Main
 		end
 	end
 
-	def ftpget(e, url, doit)
+	def ftpget(e, url)
 		Net::FTP.open(url.host, url.port, url.user, url.password) do |ftp|
 			url.path << '/' if url.path.nil? or url.path.empty?
 			case e['test']
@@ -1225,7 +1227,9 @@ class MainGet < Main
 					else
 						s = ftp.size(url.path)
 					end
-					updatedata(name(e['test'], e['url']), s, &doit)
+					updatedata(name(e['test'], e['url']), s) do |old,new|
+						yield old, new
+					end
 				rescue Net::FTPPermError
 					case $!.message[0,3]
 					when '530'
@@ -1275,13 +1279,8 @@ class MainGet < Main
 				end
 				ftp.quit
 
-				diffdata(name('diff', e['url']), s) do |old,new|
-					if old != new
-						doit.call
-						true
-					else
-						false
-					end
+				updatedata(name('diff', e['url']), s) do |old,new|
+					yield old, new
 				end
 			end
 		end
@@ -1290,12 +1289,15 @@ class MainGet < Main
 	def fetchurl(e)
 		begin
 			url = URI.parse(e['url'])
-			doit = proc { yield url }
 			scm = url.scheme.downcase
 			if scm[0,4] == 'http'
-				httpget(e, url, doit)
+				httpget(e, url) do |old,new|
+					yield url, old, new
+				end
 			elsif scm == 'ftp'
-				ftpget(e, url, doit)
+				ftpget(e, url) do |old,new|
+					yield url, old, new
+				end
 			end
 		rescue	SocketError, Timeout::Error, URI::InvalidURIError, EOFError, Errno::ECONNREFUSED, Net::ProtocolError, Net::HTTPBadResponse, Net::HTTPHeaderSyntaxError, Net::FTPError
 			# should we just rescue StandardError?
@@ -1306,8 +1308,8 @@ class MainGet < Main
 
 	def fetchurls
 		@config.each do |e|
-			fetchurl(e) do |url|
-				yield url
+			fetchurl(e) do |url,old,new|
+				yield url, old, new
 			end
 		end
 	end
