@@ -28,7 +28,7 @@
 # You may also tell me your thoughts/ideas/opinion about this tool.
 
 ProgName = 'netstiff'
-ProgVersion = '20070621'
+ProgVersion = '20080331'
 DefaultTimeout = 20
 DefaultTest = 'diff'
 DefaultContext = 3
@@ -85,12 +85,8 @@ def getcmd(c)
 	command.pop
 end
 
-def name(test, url, suffix=nil)
-	if suffix.nil?
-		test+'::'+url
-	else
-		test+'::'+url+'::'+suffix
-	end
+def name(e)
+	"#{e['test']}::#{e['url']}::#{e['range']}::#{e['start']}::#{e['end']}"
 end
 
 $gnu =	begin
@@ -740,7 +736,7 @@ class Main
 		@store.each do |key|
 			verify = false
 			@config.each do |e|
-				verify = true if key == name(e['test'], e['url'], e['range'])
+				verify = true if key == name(e)
 			end
 			unless verify
 				@store.delete(key)
@@ -1051,7 +1047,7 @@ class MainDiff < Main
 	def initialize
 		super
 		@config.each do |e|
-			key = name(e['test'], e['url'], e['range'])
+			key = name(e)
 			list = @store[key]
 			next if list.nil?
 
@@ -1089,7 +1085,7 @@ class MainReset < Main
 	def initialize
 		super
 		@config.each do |e|
-			key = name(e['test'], e['url'], e['range'])
+			key = name(e)
 			list = @store[key]
 			next if list.nil?
 			next if list[0] == list[1]
@@ -1167,15 +1163,15 @@ class MainGet < Main
 				resp = conn.head(path, header) # only need header (HEAD request)
 				case method
 				when 'size'
-					updatedata(name(method,e['url']), resp['Content-Length']) do |old,new|
+					updatedata(name(e), resp['Content-Length']) do |old,new|
 						yield old, new
 					end
 				when 'md5sum'
-					updatedata(name(method,e['url']), resp['Content-MD5']) do |old,new|
+					updatedata(name(e), resp['Content-MD5']) do |old,new|
 						yield old, new
 					end
 				when 'date'
-					updatedata(name(method,e['url']), resp['Last-Modified']) do |old,new|
+					updatedata(name(e), resp['Last-Modified']) do |old,new|
 						yield old, new
 					end
 				end
@@ -1183,7 +1179,7 @@ class MainGet < Main
 				resp = conn.get(path, header) # get body (GET request)
 				if method == 'diff' or method == 'html'
 					begin
-						updatedata(name(method, e['url'], e['range']), resp.body) do |old,new|
+						updatedata(name(e), resp.body) do |old,new|
 							old = XXX.cutout(e['start'],e['end'], old)
 							new = XXX.cutout(e['start'],e['end'], new)
 							if method == 'html'
@@ -1198,11 +1194,11 @@ class MainGet < Main
 				else # a regexp
 					begin
 						if resp.body =~ str_to_re(method)
-							updatedata(name(method.to_s, e['url'], e['range']), 'match') do |old,new|
+							updatedata(name(e), 'match') do |old,new|
 								yield old, new
 							end
 						else
-							updatedata(name(method.to_s, e['url'], e['range']), 'no match') do |old,new|
+							updatedata(name(e), 'no match') do |old,new|
 								yield old, new
 							end
 						end
@@ -1227,7 +1223,7 @@ class MainGet < Main
 					else
 						s = ftp.size(url.path)
 					end
-					updatedata(name(e['test'], e['url']), s) do |old,new|
+					updatedata(name(e), s) do |old,new|
 						yield old, new
 					end
 				rescue Net::FTPPermError
@@ -1279,7 +1275,7 @@ class MainGet < Main
 				end
 				ftp.quit
 
-				updatedata(name('diff', e['url']), s) do |old,new|
+				updatedata(name(e), s) do |old,new|
 					yield old, new
 				end
 			end
