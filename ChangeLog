@@ -1,3 +1,16 @@
+2008-03-31  Stephan Beyer <s-beyer@gmx.net>
+
+  - fixed https support.
+    Thanks to Adam Megacz for the patch.
+  - minor "configure" usability changes
+  - explicit GPLv3 licensing
+  - added sections CONFIGURATION FILE and TEST METHODS to manual page
+  - made all test methods diffable
+  - changed internal storage names
+  - regexp method prompts on match status change instead on match
+  - renamed "get" command to "update"
+  - added "full" command and make it the default (was: "update")
+
 2007-06-21  Stephan Beyer <s-beyer@gmx.net>
 
   - added menu titles for URLs, which are comments in the config file

@@ -1,19 +1,34 @@
 #!/usr/bin/ruby
 # netstiff (formerly known as webdiff)
-# (C) 2004,2007, Stephan Beyer, GNU GPL
+# Copyright (C) 2004, 2007-2008  Stephan Beyer
 #
 # requirements:
 #	* ruby standard distribution (net::http, uri, pstore)
 #	  http://www.ruby-lang.org (at least version 1.8)
 # recommended:
-#	* GNU readline for ruby (for interactive configuration)
+#	* GNU readline for Ruby -> for interactive configuration
+#	* OpenSSL for Ruby (libopenssl-ruby) -> for https://...
 # wishlist/todo?
 #	* a get-and-diff-at-once ("fastcheck"/"fetchdiff") command [requested]
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+#
 # Please tell me if you find any bugs: Stephan Beyer <s-beyer@gmx.net>
 # You may also tell me your thoughts/ideas/opinion about this tool.
 
 ProgName = 'netstiff'
-ProgVersion = '20070621'
+ProgVersion = '20080331'
 DefaultTimeout = 20
 DefaultTest = 'diff'
 DefaultContext = 3
@@ -27,7 +42,8 @@ $stderr = $stderr.dup
 $errors = 0
 
 def showversion
-	puts "#{ProgName} #{ProgVersion}\t\t(C) 2004, 2007 Stephan Beyer, GNU GPL"
+	x = "#{ProgName} #{ProgVersion} "
+	puts x+' '*(23-x.length)+'Copyright (C) 2004, 2007-2008  Stephan Beyer, GNU GPL'
 end
 def showusage
 	puts <<-EOU
@@ -35,15 +51,16 @@ def showusage
 Usage:	#{$0} [options] [command]
 
 Command can be one of:
-	configure	configure #{ProgName}
-	diff		show the current differences
-	get		fetch data from URIs and show changed ones
-	help		show this help
-	reset		reset current differences
-	version		show current version
+	configure   configure #{ProgName}
+	diff        show the current differences
+	full        full round: update, diff, reset
+	help        show this help
+	reset       reset current differences
+	update      fetch data from URIs and show changed ones
+	version     show current version
 
-`get' is used, if command is omitted. Commands may be shortened down to one
-character (e.g. `c' instead of `configure'). Leading dashes are ignored.
+`full' is used, if command is omitted.  Commands may be shortened down to
+one character (e.g. `c' instead of `configure'). Leading dashes are ignored.
 Without configuration, some commands will act like `configure'.
 
 Options:
@@ -59,7 +76,7 @@ end
 
 def getcmd(c)
 	c = c[1..-1] while c[0] == ?-
-	command=['configure','diff','help','reset','version','get']
+	command=['configure','diff','full','help','reset','version','update']
 
 	(c.length-1).downto(0) do |i|
 		command.delete_if do |x| c[i] != x[i] end
@@ -69,12 +86,8 @@ def getcmd(c)
 	command.pop
 end
 
-def name(test, url, suffix=nil)
-	if suffix.nil?
-		test+'::'+url
-	else
-		test+'::'+url+'::'+suffix
-	end
+def name(e)
+	"#{e['test']}::#{e['url']}::#{e['range']}::#{e['start']}::#{e['end']}"
 end
 
 $gnu =	begin
@@ -210,13 +223,13 @@ module Options
 			exit 1
 		elsif args == 1
 			handle(opt,ARGV.last,args)
-			'g'
+			'f'
 		elsif ARGV.length == 0
-			'g'
+			'f'
 		elsif ARGV.last == '-S' or ARGV.last == '--no-stderr'
 			def $stderr.write(x)
 			end
-			'g'
+			'f'
 		else
 			ARGV.last
 		end
@@ -412,9 +425,10 @@ on the command line.
 				return false
 			when 'n'
 				nr = @conf.length
-				configure_url(nr)
-				#configure_testmethod(nr)
-				configure_urlmenu(nr)
+				unless configure_url(nr).nil?
+					#configure_testmethod(nr)
+					configure_urlmenu(nr)
+				end
 			else
 				configure_urlmenu(c.to_i)
 			end
@@ -443,11 +457,15 @@ on the command line.
 
 	def configure_url(nr)
 		puts "\nPlease type the correct URI of the web page you want to check for updates:"
+		x = readln('> ')
+		return nil if x.empty?
 		if @conf[nr].nil?
-			@conf[nr] = {'url'=>readln('> ')}
+			@conf[nr] = {'url' => x}
 		else
-			@conf[nr]['url'] = readln('> ')
+			@conf[nr]['url'] = x
 		end
+		@conf[nr]['url'] = 'http://' + @conf[nr]['url'] if (@conf[nr]['url'] =~ %r(^(https?|ftp)://)i).nil?
+		@conf[nr]['url']
 	end
 	def configure_testmethod(nr)
 		if show(nr,'url')=~ %r(^ftp://)i
@@ -471,8 +489,8 @@ Choose the TEST METHOD, the way of looking for changes. Type:
 	diff	This method downloads the whole file and saves the two 
 		last versions. Later you can use `#{ProgName} diff' to take
 		a look at a diff of these versions.
-	html	This method acts like 'diff', but ignores text between
-		'<' and '>' on diffing. (Those usually denote HTML tags.)
+	html	This method acts like 'diff', but assumes to get HTML input
+		and preprocesses it to make it more human-readable.
 	size	This method downloads the HTTP header to check if the file
 		size changes. The server should response the Content-Length
 		header entity. (works in most cases)
@@ -719,11 +737,11 @@ class Main
 		@store.each do |key|
 			verify = false
 			@config.each do |e|
-				verify = true if key == name(e['test'], e['url'], e['range'])
+				verify = true if key == name(e)
 			end
 			unless verify
 				@store.delete(key)
-				$log.puts "deleted stored `#{key}' data"
+				$log.puts "#{key} - removed"
 			end
 		end
 	end
@@ -1030,33 +1048,36 @@ class MainDiff < Main
 	def initialize
 		super
 		@config.each do |e|
-			method = e['test']
-			next unless ['diff','html'].member?(method) ## will we change this and generate pseudo-diffs?
-			key = name(method, e['url'], e['range'])
+			key = name(e)
 			list = @store[key]
 			next if list.nil?
 
-			if e['url'] =~ %r(^ftp://)i
-				# do nothing special
-				next if list[0] == list[1]
-			else # HTTP specialities
-				list[0] = XXX.cutout(e['start'],e['end'], list[0])
-				list[1] = XXX.cutout(e['start'],e['end'], list[1])
-				next if list[0] == list[1]
+			showdiff(e, list[0].to_s, list[1].to_s)
+		end
+	end
 
-				list[0] = XXX.process_html(list[0],e) if method == 'html'
-				list[1] = XXX.process_html(list[1],e) if method == 'html'
-				next if list[0] == list[1]
+	def showdiff(e, old, new)
+		return if old == new
+		method = e['test']
+		if ['diff','html'].member? method and not e['url'] =~ %r(^ftp://)i
+			old = XXX.cutout(e['start'],e['end'], old)
+			new = XXX.cutout(e['start'],e['end'], new)
+			return if old == new
+			if method == 'html'
+				old = XXX.process_html(old,e)
+				new = XXX.process_html(new,e)
+				return if old == new
 			end
+		end
 
-			puts '--- '+e['url']
-			puts '+++ '+e['url']
-			file1, file2 = [], []
-			list[0].each_line do |line| file1 << line end
-			list[1].each_line do |line| file2 << line end
-			Diff.unified(file1,file2,DefaultContext) do |str|
-				print str
-			end
+		puts "diff --netstiff #{method} #{e['url']}"
+		puts '--- '+e['url']
+		puts '+++ '+e['url']
+		file1, file2 = [], []
+		file1 = old.split(/\n/).map do |x| x<<"\n" end
+		file2 = new.split(/\n/).map do |x| x<<"\n" end
+		Diff.unified(file1,file2,DefaultContext) do |str|
+			print str
 		end
 	end
 end
@@ -1065,9 +1086,7 @@ class MainReset < Main
 	def initialize
 		super
 		@config.each do |e|
-			method = e['test']
-			next unless ['diff','html'].member?(method)
-			key = name(method, e['url'], e['range'])
+			key = name(e)
 			list = @store[key]
 			next if list.nil?
 			next if list[0] == list[1]
@@ -1077,41 +1096,42 @@ class MainReset < Main
 	end
 end
 
-class MainGet < Main
+class MainUpdate < Main
 	require 'net/http'
 	require 'uri'
 
 	def initialize
 		super
-		fetchurls
+		@avail_https = true
+		begin
+			require 'net/https'
+		rescue LoadError
+			@avail_https = false
+		end
+		fetchurls do |url,old,new|
+			yield url if old != new
+			old != new
+		end
 	end
 
 	def updatedata(key, value)
 		if value.nil?
 			errorout "#{key} - not set! choose another test method!"
-			return
-		end
-		unless @store[key].nil? or value == @store[key]
-			yield
-			$log.puts "#{key} - changed"
-		end
-		@store[key] = value
-	end
-
-	def diffdata(key, value)
-		if @store[key].nil?
+			false
+		elsif @store[key].nil?
 			@store[key] = [value, value]
-			$log.puts "#{key} - set"
+			$log.puts "#{key} - initialized"
+			false
+		elsif yield @store[key][1], value
+			@store[key] = [@store[key][0], value]
+			$log.puts "#{key} - changes detected"
+			true
 		else
-			if @store[key][1] != value
-				@store[key] = [@store[key][1], value]
-				$log.puts "#{key} - changed" if	yield @store[key][0], @store[key][1]
-
-			end
+			false
 		end
 	end
 
-	def httpget(e, url, doit)
+	def httpget(e, url)
 		header = {}
 		header['User-Agent'] = e['client'] unless e['client'].nil?
 		header['Referer'] = e['referer'] unless e['referer'].nil?
@@ -1130,6 +1150,13 @@ class MainGet < Main
 		path << '?'+url.query unless url.query.to_s.empty?
 
 		conn = Net::HTTP.new(url.host, url.port, proxy, proxyport) # you can add "proxyuser", "proxypass" strings for proxy auth
+		if url.scheme.downcase == 'https'
+			if @avail_https
+				conn.use_ssl = true
+			else
+				raise Net::ProtocolError, "unsupported https:// protocol; libopenssl-ruby could not be found"
+			end
+		end
 		conn.open_timeout = timeout.to_i
 		conn.start do
 			resp = {}
@@ -1137,29 +1164,30 @@ class MainGet < Main
 				resp = conn.head(path, header) # only need header (HEAD request)
 				case method
 				when 'size'
-					updatedata(name(method,e['url']), resp['Content-Length'], &doit)
+					updatedata(name(e), resp['Content-Length']) do |old,new|
+						yield old, new
+					end
 				when 'md5sum'
-					updatedata(name(method,e['url']), resp['Content-MD5'], &doit)
+					updatedata(name(e), resp['Content-MD5']) do |old,new|
+						yield old, new
+					end
 				when 'date'
-					updatedata(name(method,e['url']), resp['Last-Modified'], &doit)
+					updatedata(name(e), resp['Last-Modified']) do |old,new|
+						yield old, new
+					end
 				end
 			else
 				resp = conn.get(path, header) # get body (GET request)
 				if method == 'diff' or method == 'html'
 					begin
-						diffdata(name(method, e['url'], e['range']), resp.body) do |old,new|
+						updatedata(name(e), resp.body) do |old,new|
 							old = XXX.cutout(e['start'],e['end'], old)
 							new = XXX.cutout(e['start'],e['end'], new)
 							if method == 'html'
 								old = XXX.process_html(old,e)
 								new = XXX.process_html(new,e)
 							end
-							if old != new
-								doit.call
-								true
-							else
-								false
-							end
+							yield old, new if old != new
 						end
 					rescue SyntaxError
 						$errors += 1
@@ -1167,7 +1195,13 @@ class MainGet < Main
 				else # a regexp
 					begin
 						if resp.body =~ str_to_re(method)
-							doit.call
+							updatedata(name(e), 'match') do |old,new|
+								yield old, new
+							end
+						else
+							updatedata(name(e), 'no match') do |old,new|
+								yield old, new
+							end
 						end
 					rescue SyntaxError
 						errorout "Error on parsing regex \"#{method}\"."
@@ -1179,7 +1213,7 @@ class MainGet < Main
 		end
 	end
 
-	def ftpget(e, url, doit)
+	def ftpget(e, url)
 		Net::FTP.open(url.host, url.port, url.user, url.password) do |ftp|
 			url.path << '/' if url.path.nil? or url.path.empty?
 			case e['test']
@@ -1190,7 +1224,9 @@ class MainGet < Main
 					else
 						s = ftp.size(url.path)
 					end
-					updatedata(name(e['test'], e['url']), s, &doit)
+					updatedata(name(e), s) do |old,new|
+						yield old, new
+					end
 				rescue Net::FTPPermError
 					case $!.message[0,3]
 					when '530'
@@ -1240,33 +1276,37 @@ class MainGet < Main
 				end
 				ftp.quit
 
-				diffdata(name('diff', e['url']), s) do |old,new|
-					if old != new
-						doit.call
-						true
-					else
-						false
-					end
+				updatedata(name(e), s) do |old,new|
+					yield old, new
 				end
 			end
 		end
 	end
 
+	def fetchurl(e)
+		begin
+			url = URI.parse(e['url'])
+			scm = url.scheme.downcase
+			if scm[0,4] == 'http'
+				httpget(e, url) do |old,new|
+					yield url, old, new
+				end
+			elsif scm == 'ftp'
+				ftpget(e, url) do |old,new|
+					yield url, old, new
+				end
+			end
+		rescue	SocketError, Timeout::Error, URI::InvalidURIError, EOFError, Errno::ECONNREFUSED, Net::ProtocolError, Net::HTTPBadResponse, Net::HTTPHeaderSyntaxError, Net::FTPError
+			# should we just rescue StandardError?
+			errorout e['url']+' : '+$!
+			$errors += 1
+		end
+	end
+
 	def fetchurls
 		@config.each do |e|
-			begin
-				url = URI.parse(e['url'])
-				doit = proc { puts url }
-				scm = url.scheme.downcase
-				if scm[0,4] == 'http'
-					httpget(e, url, doit)
-				elsif scm == 'ftp'
-					ftpget(e, url, doit)
-				end
-			rescue	SocketError, Timeout::Error, URI::InvalidURIError, EOFError, Errno::ECONNREFUSED, Net::ProtocolError, Net::HTTPBadResponse, Net::HTTPHeaderSyntaxError, Net::FTPError
-				# should we just rescue StandardError?
-				errorout e['url']+': '+$!
-				$errors += 1
+			fetchurl(e) do |url,old,new|
+				yield url, old, new
 			end
 		end
 	end
@@ -1295,21 +1335,24 @@ when 'configure'
 	Configure.new
 when 'diff'
 	MainDiff.new
+when 'full'
+	# here is a bad variant
+	# caused by the chaotic design
+	MainUpdate.new do end
+	MainDiff.new
+	MainReset.new
 when 'help'
 	showversion
 	showusage
 when 'reset'
 	MainReset.new
+when 'update'
+	MainUpdate.new do |url|
+		puts url
+	end
 when 'version'
 	showversion
 else
-	MainGet.new
-	#begin
-	#	MainGet.new
-	#rescue StandardError
-	#	errorout $!
-	#	$errors += 1
-	#end
-	### this is nicer, but ugly for bug reporting!
+	puts 'This should not happen, actually.'
 end
 exit $errors
