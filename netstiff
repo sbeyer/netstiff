@@ -53,13 +53,13 @@ Usage:	#{$0} [options] [command]
 Command can be one of:
 	configure	configure #{ProgName}
 	diff		show the current differences
-	get		fetch data from URIs and show changed ones
 	help		show this help
 	reset		reset current differences
+	update		fetch data from URIs and show changed ones
 	version		show current version
 
-`get' is used, if command is omitted. Commands may be shortened down to one
-character (e.g. `c' instead of `configure'). Leading dashes are ignored.
+`update' is used, if command is omitted. Commands may be shortened down to 
+one character (e.g. `c' instead of `configure'). Leading dashes are ignored.
 Without configuration, some commands will act like `configure'.
 
 Options:
@@ -75,7 +75,7 @@ end
 
 def getcmd(c)
 	c = c[1..-1] while c[0] == ?-
-	command=['configure','diff','help','reset','version','get']
+	command=['configure','diff','help','reset','version','update']
 
 	(c.length-1).downto(0) do |i|
 		command.delete_if do |x| c[i] != x[i] end
@@ -222,13 +222,13 @@ module Options
 			exit 1
 		elsif args == 1
 			handle(opt,ARGV.last,args)
-			'g'
+			'u'
 		elsif ARGV.length == 0
-			'g'
+			'u'
 		elsif ARGV.last == '-S' or ARGV.last == '--no-stderr'
 			def $stderr.write(x)
 			end
-			'g'
+			'u'
 		else
 			ARGV.last
 		end
@@ -1095,7 +1095,7 @@ class MainReset < Main
 	end
 end
 
-class MainGet < Main
+class MainUpdate < Main
 	require 'net/http'
 	require 'uri'
 
@@ -1108,7 +1108,7 @@ class MainGet < Main
 			@avail_https = false
 		end
 		fetchurls do |url,old,new|
-			puts url if old != new
+			yield url if old != new
 			old != new
 		end
 	end
@@ -1342,9 +1342,13 @@ when 'reset'
 when 'version'
 	showversion
 else
-	MainGet.new
+	MainUpdate.new do |url|
+		puts url
+	end
 	#begin
-	#	MainGet.new
+	#	MainUpdate.new do |url|
+	#		puts url
+	#	end
 	#rescue StandardError
 	#	errorout $!
 	#	$errors += 1

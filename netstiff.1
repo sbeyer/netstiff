@@ -42,7 +42,7 @@ in the argument list.
 Commands may be shortened down to one character (e.g. \fBc\fP instead of 
 \fBconfigure\fP). Leading dashes are ignored.
 
-If you start netstiff without command, \fBget\fP will be used.
+If you start netstiff without command, \fBupdate\fP will be used.
 .TP
 \fBconfigure\fP
 Use this command if you want to start the configurator, the interactive
@@ -66,12 +66,12 @@ versions of saved content (Web pages or meta data).
 See \fIdiff\fP\|(1). 
 
 The version after the last \fBreset\fP (or the initial version) 
-and the version of the last \fBget\fP will be compared.
+and the version of the last \fBupdate\fP will be compared.
 .TP
-\fBget\fP
+\fBupdate\fP
 Use this command if you want netstiff to fetch the data from the 
 specified URIs and show you only those \- one per line \- 
-that have changed since your last \fBget\fP.
+that have changed since your last \fBupdate\fP.
 The behaviour is already described in \fBDESCRIPTION\fP.
 .TP
 \fBhelp\fP
@@ -391,7 +391,7 @@ to check if it has changed.
 \fB/regexp/\fP
 This method downloads the HTTP content and checks if the 
 given regular expression matches or not.
-The URI is prompted (when using \fBget\fP) 
+The URI is prompted (when using \fBupdate\fP) 
 iff this match status has changed.
 .br
 This method is not available on FTP URIs.
