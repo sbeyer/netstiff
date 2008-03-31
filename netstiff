@@ -51,14 +51,15 @@ def showusage
 Usage:	#{$0} [options] [command]
 
 Command can be one of:
-	configure	configure #{ProgName}
-	diff		show the current differences
-	help		show this help
-	reset		reset current differences
-	update		fetch data from URIs and show changed ones
-	version		show current version
+	configure   configure #{ProgName}
+	diff        show the current differences
+	full        full round: update, diff, reset
+	help        show this help
+	reset       reset current differences
+	update      fetch data from URIs and show changed ones
+	version     show current version
 
-`update' is used, if command is omitted. Commands may be shortened down to 
+`full' is used, if command is omitted.  Commands may be shortened down to
 one character (e.g. `c' instead of `configure'). Leading dashes are ignored.
 Without configuration, some commands will act like `configure'.
 
@@ -75,7 +76,7 @@ end
 
 def getcmd(c)
 	c = c[1..-1] while c[0] == ?-
-	command=['configure','diff','help','reset','version','update']
+	command=['configure','diff','full','help','reset','version','update']
 
 	(c.length-1).downto(0) do |i|
 		command.delete_if do |x| c[i] != x[i] end
@@ -222,13 +223,13 @@ module Options
 			exit 1
 		elsif args == 1
 			handle(opt,ARGV.last,args)
-			'u'
+			'f'
 		elsif ARGV.length == 0
-			'u'
+			'f'
 		elsif ARGV.last == '-S' or ARGV.last == '--no-stderr'
 			def $stderr.write(x)
 			end
-			'u'
+			'f'
 		else
 			ARGV.last
 		end
@@ -1334,25 +1335,24 @@ when 'configure'
 	Configure.new
 when 'diff'
 	MainDiff.new
+when 'full'
+	# here is a bad variant
+	# caused by the chaotic design
+	MainUpdate.new do end
+	MainDiff.new
+	MainReset.new
 when 'help'
 	showversion
 	showusage
 when 'reset'
 	MainReset.new
-when 'version'
-	showversion
-else
+when 'update'
 	MainUpdate.new do |url|
 		puts url
 	end
-	#begin
-	#	MainUpdate.new do |url|
-	#		puts url
-	#	end
-	#rescue StandardError
-	#	errorout $!
-	#	$errors += 1
-	#end
-	### this is nicer, but ugly for bug reporting!
+when 'version'
+	showversion
+else
+	puts 'This should not happen, actually.'
 end
 exit $errors

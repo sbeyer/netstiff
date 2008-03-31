@@ -23,13 +23,11 @@ The FTP update checker is only able to \fCdiff\fP on directory listings and file
 and to compare \fCsize\fP and \fCdate\fP of files.
 
 Without a given command, netstiff will check for updates 
-of the specified URIs and only print those that changed, one per
-line, so that the output of netstiff can easily be used by 
-further scripts (e.g. \fIwget\fP or \fImail\fP).
+of the specified URIs and then print the changes.
 If no configuration file exists, the configurator is launched
 instead.
 
-Netstiff exits after all configured Web pages are checked.
+Netstiff exits after all configured URIs are checked.
 Occuring warnings and errors leave a message in the log file 
 (\fC~/.netstiff/lastlog\fP) and on \fCstderr\fP.
 Use it with \fIcron\fP if you want to check for updates regularly.
@@ -42,7 +40,8 @@ in the argument list.
 Commands may be shortened down to one character (e.g. \fBc\fP instead of 
 \fBconfigure\fP). Leading dashes are ignored.
 
-If you start netstiff without command, \fBupdate\fP will be used.
+If you start netstiff without command,
+the \fBfull\fP command will be used.
 .TP
 \fBconfigure\fP
 Use this command if you want to start the configurator, the interactive
@@ -55,7 +54,8 @@ See section \fBCONFIGURATION FILE\fP.
 .br
 The configurator will not initialize the netstiff cache for added
 URIs, i.e. it will not download anything.
-To do so, you have to rerun netstiff. This is a feature.
+To do so, you have to run \fCnetstiff update\fP first.
+This is a feature.
 .br
 If the config file does not exit, the configuration tool is started 
 automatically.
@@ -68,11 +68,17 @@ See \fIdiff\fP\|(1).
 The version after the last \fBreset\fP (or the initial version) 
 and the version of the last \fBupdate\fP will be compared.
 .TP
-\fBupdate\fP
-Use this command if you want netstiff to fetch the data from the 
-specified URIs and show you only those \- one per line \- 
-that have changed since your last \fBupdate\fP.
-The behaviour is already described in \fBDESCRIPTION\fP.
+\fBfull\fP
+Use this command if you simply want netstiff to check for
+updates and print the diff.
+
+\fBfull\fP is a simple replacement for the following sequence:
+.br
+\fCnetstiff update > /dev/null\fP
+.br
+\fCnetstiff diff\fP
+.br
+\fCnetstiff reset\fP
 .TP
 \fBhelp\fP
 Use this command to get usage information about netstiff. To be honest,
@@ -83,6 +89,11 @@ documentation.
 Use this command after you noticed all differences with the \fBdiff\fP 
 command (see above), so that \fBdiff\fP will not show you the same changes
 again and again.
+.TP
+\fBupdate\fP
+Use this command if you want netstiff to fetch the data from the 
+specified URIs and show you only those \- one per line \- 
+that have changed since your last \fBupdate\fP.
 .TP
 \fBversion\fP
 This command will display version number and copyright.
@@ -122,7 +133,7 @@ When you are seeing your shell prompt again,
 you know that netstiff should retrieve an initial 
 version of the Web page you specified.
 .nf
-\&        \fCnetstiff\fP
+\&        \fCnetstiff update\fP
 .fi
 After some weeks in the sun you want to see if something has changed. 
 So you let netstiff check for updates.
