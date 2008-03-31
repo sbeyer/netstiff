@@ -1,7 +1,7 @@
 This package was debianized by Stephan Beyer <s-beyer@gmx.net>.
 Upstream and maintainer of this package is Stephan Beyer.
 
-Copyright (C) 2004, 2007	Stephan Beyer <s-beyer@gmx.net>
+Copyright (C) 2004, 2007-2008	Stephan Beyer <s-beyer@gmx.net>
 
 It can be obtained from:
 	http://pkqs.net/~sbeyer/tools/netstiff/
@@ -10,7 +10,7 @@ License:
 
    This package is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
-   the Free Software Foundation; either version 2 of the License, or
+   the Free Software Foundation; either version 3 of the License, or
    (at your option) any later version.
 
    This package is distributed in the hope that it will be useful,
@@ -23,4 +23,4 @@ License:
    Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301 USA
 
 On Debian systems, the complete text of the GNU General
-Public License can be found in `/usr/share/common-licenses/GPL'.
+Public License can be found in `/usr/share/common-licenses/GPL-3'.
