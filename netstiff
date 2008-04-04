@@ -425,10 +425,7 @@ on the command line.
 				return false
 			when 'n'
 				nr = @conf.length
-				unless configure_url(nr).nil?
-					#configure_testmethod(nr)
-					configure_urlmenu(nr)
-				end
+				configure_urlmenu(nr)
 			else
 				configure_urlmenu(c.to_i)
 			end
@@ -653,18 +650,25 @@ configuration part!                            Ready? Press a key.
 		end
 	end
 	def configure_urlmenu(nr)
+		if @conf[nr].nil?
+			backup = nil
+			return if configure_url(nr).nil?
+		else
+			backup = @conf[nr].dup
+		end
+
 		loop do
 			puts "\n\n"
+			possible = []
 			if nr == 0 then
-				possible=[]
 				puts "  [ ]\tGlobal"
 			else
-				possible=['u']
 				puts "  [u]\tURI: #{show(nr,'url')}"
+				possible << 'u'
 			end
 			puts "  [m]\tTest method: #{testmeth nr}"
-			puts "  [x]\tMenu title: #{show(nr,'title')}"
-			possible += ['m','x']
+			puts "  [-]\tMenu title: #{show(nr,'title')}"
+			possible += ['m','-']
 			puts
 			if show(nr,'url')=~ %r(^ftp://)i
 				puts "  [t]\tTimeout: #{show(nr,'timeout')}"
@@ -703,7 +707,18 @@ configuration part!                            Ready? Press a key.
 			end
 			puts "  [f]\tI have finished."
 			possible << 'f'
+			unless backup.nil?
+				print "  [x]\tBack to main menu."
+				if backup != @conf[nr]
+					puts " Discard changes."
+				else
+					puts
+				end
+				possible << 'x'
+			end
+
 			case (choice = choose(possible))
+			when '-' then configure_title(nr)
 			when 'a' then configure_useragent(nr)
 			when 'b' then configure_range(nr)
 			when 'd'
@@ -720,7 +735,9 @@ configuration part!                            Ready? Press a key.
 			when 't' then configure_timeout(nr)
 			when 'u' then configure_url(nr)
 			when 'v' then configure_passive(nr)
-			when 'x' then configure_title(nr)
+			when 'x'
+				@conf[nr] = backup
+				return
 			end
 		end
 	end
