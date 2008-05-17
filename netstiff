@@ -259,7 +259,7 @@ class Store
 	end
 end
 
-class Config
+class ConfigNS
 	def initialize(use=true)
 		@conf = [{}]
 		begin
@@ -380,7 +380,7 @@ on the command line.
 					out.puts "  + proxy\t"+e['proxy'] unless e['proxy'].nil?
 					out.puts "  + passive\t"+e['passive'] unless e['passive'].nil?
 					out.puts "  + htmlcmd\t"+e['htmlcmd'] if e['test']=='html' and not e['htmlcmd'].nil?
-					if ['html','diff'].member?(e['test'])
+					if [nil,'html','diff'].member?(e['test'])
 						out.puts "  + start\t"+e['start'] unless e['start'].nil?
 						out.puts "  + end \t"+e['end'] unless e['end'].nil?
 					end
@@ -745,7 +745,7 @@ end
 
 class Main
 	def initialize
-		@config = Config.new 
+		@config = ConfigNS.new
 		@store = Store.new
 		cleanup
 	end
@@ -1331,7 +1331,7 @@ end
 
 class Configure
 	def initialize
-		@config = Config.new false
+		@config = ConfigNS.new false
 		@config.configure
 	end
 end
