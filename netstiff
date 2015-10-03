@@ -76,7 +76,7 @@ end
 
 def getcmd(c)
 	c = c[1..-1] while c[0] == ?-
-	command=['configure','diff','full','help','reset','version','update']
+	command=['configure','diff','full','help','reset','version','update','show-store']
 
 	(c.length-1).downto(0) do |i|
 		command.delete_if do |x| c[i] != x[i] end
@@ -1061,6 +1061,25 @@ module XXX  # how to name that? ;-)
 	end
 end
 
+# this is for debugging only
+class MainShowStore < Main
+	def initialize
+		super
+		keys = []
+		@store.each do |key|
+			keys <<  key
+		end
+		keys.each do |key|
+			puts
+			puts "== Stored content for #{key} =="
+			@store[key].each_with_index do |line,i|
+				puts "=== Index #{i} of #{key} ==="
+				print line
+			end
+		end
+	end
+end
+
 class MainDiff < Main
 	def initialize
 		super
@@ -1369,6 +1388,8 @@ when 'update'
 	end
 when 'version'
 	showversion
+when 'show-store' # this is a feature for debugging only, so undocumented
+	MainShowStore.new
 else
 	puts 'This should not happen, actually.'
 end
