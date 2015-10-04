@@ -17,8 +17,8 @@ install: all $(PROGNAME) $(PROGNAME).1 ChangeLog
 	install -p -m 644 ChangeLog $(DESTDIR)/share/doc/$(PROGNAME)/
 
 uninstall:
-	rm -f	$(DESTDIR)/bin/$(PROGNAME) \
-		$(DESTDIR)/share/man/man1/$(PROGNAME).1.gz \
-		$(DESTDIR)/share/doc/$(PROGNAME)/THANKSTO \
-		$(DESTDIR)/share/doc/$(PROGNAME)/ChangeLog
-	rmdir	$(DESTDIR)/share/doc/$(PROGNAME)/
+	$(RM) $(DESTDIR)/bin/$(PROGNAME) \
+	      $(DESTDIR)/share/man/man1/$(PROGNAME).1.gz \
+	      $(DESTDIR)/share/doc/$(PROGNAME)/THANKSTO \
+	      $(DESTDIR)/share/doc/$(PROGNAME)/ChangeLog
+	rmdir $(DESTDIR)/share/doc/$(PROGNAME)/
